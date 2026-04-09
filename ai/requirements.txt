@@ -1,0 +1,30 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+httpx
+requests
+
+# AI / LLM
+openai
+tiktoken
+litellm
+instructor
+
+# Google Cloud (kalau dipakai)
+google-cloud-aiplatform
+google-cloud-storage
+google-cloud-bigquery
+
+# Auth & security
+Authlib
+PyJWT
+cryptography
+
+# CLI / tooling
+typer
+rich
+
+# Optional (kalau kepake)
+huggingface_hub
+tokenizers
