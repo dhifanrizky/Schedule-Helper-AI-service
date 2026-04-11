@@ -1,0 +1,82 @@
+@startuml
+title Sequence Diagram - Agent 3: Action Translator
+
+actor User
+participant "API Gateway\n(NestJS)" as API
+participant "Pipeline Runner" as Pipeline
+participant "Agent 3\nTranslator" as Agent3
+participant "LLM Provider" as LLM
+participant "Schedule Tools" as Tools
+participant "Session State" as Session
+participant "PostgreSQL\n(NeonDB)" as Postgres
+participant "Google Calendar" as Calendar
+
+Pipeline -> Agent3: run(session)
+Agent3 -> Session: read ranked_tasks[],\nuser_condition
+
+loop ReAct Loop [until schedule confirmed or max_iter reached]
+
+    Agent3 -> LLM: send_messages(system_prompt,\nranked_tasks, user_condition, history)
+    LLM --> Agent3: response\n{thought, tool_call: get_calendar_slots}
+
+    Agent3 -> Tools: get_calendar_slots(date)
+    Tools -> Calendar: GET /freebusy\n{date, user_calendar_id}
+    Calendar --> Tools: {slots: ["14:00-17:00",\n"19:00-22:00"]}
+    Tools --> Agent3: {available_slots: [...]}
+
+    Agent3 -> LLM: send_messages(history + tool_result)
+    LLM --> Agent3: response\n{thought, tool_call: generate_steps}
+
+    loop per top priority task
+        Agent3 -> Tools: generate_steps(task_id)
+        Tools -> LLM: send sub-prompt\n"Pecah task ini jadi langkah konkret"
+        LLM --> Tools: {steps: ["step 1", "step 2", ...]}
+        Tools --> Agent3: {task_id, steps[], estimated_duration}
+    end
+
+    Agent3 -> LLM: send_messages(history + all_steps)
+    LLM --> Agent3: response\n{thought, tool_call: draft_schedule}
+
+    Agent3 -> Tools: draft_schedule(tasks_with_steps, slots)
+    Tools --> Session: write draft_schedule
+    Tools --> Agent3: {draft: {...}, reasoning: "..."}
+
+    Agent3 --> API: stream draft + reasoning to UI
+    API --> User: Menampilkan draft jadwal\nbeserta penjelasan logika
+
+    User -> API: POST /confirm\n{action: "approve" | "revise",\nfeedback: "..."}
+    API -> Agent3: resume(user_response)
+
+    alt user approve
+        Agent3 -> LLM: send_messages(history +\n"user approved")
+        LLM --> Agent3: response\n{thought: "finalize schedule"}
+
+        Agent3 -> Tools: finalize_schedule()
+        Tools -> Calendar: POST /events\n{title, start, end, description}
+        Calendar --> Tools: {event_id, status: "created"}
+        Tools -> Postgres: INSERT INTO schedules\n{session_id, tasks, slots, event_ids}
+        Postgres --> Tools: {status: "saved"}
+        Tools --> Session: write final_schedule\nwrite agent3_done = true
+        Tools --> Agent3: {status: "done"}
+
+    else user revise
+        Agent3 -> LLM: send_messages(history +\nuser_feedback)
+        LLM --> Agent3: response\n{thought, tool_call: adjust_schedule}
+
+        Agent3 -> Tools: adjust_schedule(feedback)
+        Tools --> Session: update draft_schedule
+        Tools --> Agent3: {draft: {...}, reasoning: "..."}
+        note right: loop lanjut,\ndraft baru ditampilkan ke user
+
+    else max revisi tercapai (3x)
+        Agent3 --> API: "Revisi maksimal tercapai,\nsilakan approve draft terakhir"
+        API --> User: Notifikasi batas revisi
+    end
+
+end
+
+Agent3 --> Pipeline: return session.final_schedule
+Pipeline --> API: {status: "pipeline_complete",\nschedule: {...}}
+API --> User: Jadwal final dikunci
+
+@enduml

@@ -1,0 +1,69 @@
+@startuml
+title Sequence Diagram - Agent 2: Context-Aware Prioritizer
+
+actor User
+participant "API Gateway\n(NestJS)" as API
+participant "Pipeline Runner" as Pipeline
+participant "Agent 2\nPrioritizer" as Agent2
+participant "LLM Provider" as LLM
+participant "Scoring Tools" as Tools
+participant "Session State" as Session
+participant "PostgreSQL\n(NeonDB)" as Postgres
+participant "ChromaDB" as Vector
+
+User -> API: POST /checkin\n{energy: "low", mood: "stressed",\navailable_minutes: 180}
+API -> Pipeline: resume_pipeline(session_id, user_condition)
+Pipeline -> Session: write user_condition
+Pipeline -> Agent2: run(session)
+
+Agent2 -> Session: read tasks[], user_condition
+
+loop ReAct Loop [until finalize_priority called or max_iter reached]
+
+    Agent2 -> LLM: send_messages(system_prompt,\ntasks, user_condition, history)
+    LLM --> Agent2: response\n{thought, tool_call: get_user_history}
+
+    Agent2 -> Tools: get_user_history(n_days=7)
+    Tools -> Postgres: SELECT avg(actual/estimated)\nFROM task_history\nWHERE user_id = ?
+    Postgres --> Tools: {duration_ratio: 0.8,\ncompletion_rate: 0.75}
+    Tools --> Agent2: {history: {...}}
+
+    Agent2 -> LLM: send_messages(history + tool_result)
+    LLM --> Agent2: response\n{thought, tool_call: retrieve_context}
+
+    Agent2 -> Tools: retrieve_context(query="task priority context")
+    Tools -> Vector: similarity_search(embedding, k=3)
+    Vector --> Tools: [{doc: "...", score: 0.91}, ...]
+    Tools --> Agent2: {context: [...]}
+
+    Agent2 -> LLM: send_messages(history + tool_result)
+    LLM --> Agent2: response\n{thought, tool_call: calculate_score}
+
+    loop per task
+        Agent2 -> Tools: calculate_score(task_id,\nurgency, impact,\nfeasibility, energy_match)
+        Tools --> Session: write tasks[id].score
+        Tools --> Agent2: {task_id, total_score}
+
+        Agent2 -> LLM: send_messages(history + tool_result)
+        LLM --> Agent2: response\n{thought, tool_call: calculate_score}
+    end
+
+    Agent2 -> LLM: send_messages(history + all_scores)
+
+    alt konteks cukup untuk finalisasi
+        LLM --> Agent2: response\n{thought, tool_call: finalize_priority}
+        Agent2 -> Tools: finalize_priority(ranked_task_ids)
+        Tools --> Session: write ranked_tasks[]\nwrite reasoning
+        Tools --> Agent2: {status: "done",\nranked_tasks: [...],\nreasoning: "..."}
+    else konteks belum cukup
+        LLM --> Agent2: response\n{thought, tool_call: retrieve_context}
+        note right: loop lanjut\ndengan query lebih spesifik
+    end
+
+end
+
+Agent2 --> Pipeline: return session.ranked_tasks
+Pipeline --> API: {status: "agent2_complete",\ntop_priorities: [...],\nreasoning: "..."}
+API --> User: Menampilkan top 1-3 prioritas\nbeserta reasoning
+
+@enduml

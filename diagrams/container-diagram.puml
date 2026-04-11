@@ -1,0 +1,43 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+title Container Diagram - Schedule Helper AI
+
+Person(user, "User", "A professional managing daily activities")
+Person(guest, "Guest", "An unregistered user exploring the system")
+
+System_Boundary(c1, "Schedule Helper AI") {
+    Container(web_app, "Web Application", "Next.js, Vercel", "Delivers the Schedule Helper SPA to users via browser")
+    Container(spa, "Single-Page App", "Next.js, React", "Provides chat interface for mind dump input and schedule output display")
+    Container(api_gateway, "API Gateway", "NestJS, Docker", "Handles routing, authentication, rate limiting, and request validation")
+    Container(agent_orchestrator, "Agent Orchestrator", "Python, LangChain", "Manages sequential execution of three AI agents and shared session state")
+    Container(agent1, "Agent 1 - Interpreter", "Python, LangChain", "Parses free-form input into structured tasks via ReAct loop")
+    Container(agent2, "Agent 2 - Prioritizer", "Python, LangChain", "Scores and ranks tasks based on user condition and context")
+    Container(agent3, "Agent 3 - Translator", "Python, LangChain", "Converts top priorities into concrete action steps and schedule draft")
+    ContainerDb(postgres, "Relational Database", "PostgreSQL, NeonDB", "Stores user data, session history, and finalized schedules")
+    ContainerDb(vector_db, "Vector Database", "ChromaDB", "Stores semantic embeddings for context retrieval (RAG)")
+}
+
+System_Ext(llm_provider, "LLM Provider", "GPT-4o via OpenAI API")
+System_Ext(calendar_system, "Google Calendar", "External calendar service")
+
+Rel(user, web_app, "Uses", "HTTPS")
+Rel(guest, web_app, "Uses", "HTTPS")
+Rel_Neighbor(web_app, spa, "Delivers")
+Rel(spa, api_gateway, "Sends requests", "async, JSON/HTTPS")
+Rel(api_gateway, agent_orchestrator, "Forwards requests", "sync, JSON")
+Rel(agent_orchestrator, agent1, "Runs first", "sync")
+Rel(agent_orchestrator, agent2, "Runs second", "sync")
+Rel(agent_orchestrator, agent3, "Runs third", "sync")
+Rel(agent1, postgres, "Reads and writes session", "sync, SQL")
+Rel(agent2, postgres, "Reads user history", "sync, SQL")
+Rel(agent2, vector_db, "Retrieves semantic context", "sync")
+Rel(agent3, postgres, "Writes finalized schedule", "sync, SQL")
+Rel(agent3, calendar_system, "Reads slots and writes events", "sync, HTTPS")
+Rel(agent1, llm_provider, "Sends prompts", "async, HTTPS")
+Rel(agent2, llm_provider, "Sends prompts", "async, HTTPS")
+Rel(agent3, llm_provider, "Sends prompts", "async, HTTPS")
+
+@enduml

@@ -1,0 +1,21 @@
+@startuml
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+title System Context Diagram - Schedule Helper AI
+
+Person(user, "User", "A professional experiencing cognitive overload who needs help prioritizing daily activities.")
+Person(guest, "Guest", "An unregistered user exploring system features via limited demo access.")
+
+System(scheduler_system, "Schedule Helper AI", "An AI-powered cognitive assistant that processes free-form activity input and returns prioritized schedules using multi-agent orchestration.")
+
+System_Ext(llm_provider, "LLM Provider", "Provides large language model capabilities (GPT-4o) for agent reasoning and structured output generation.")
+System_Ext(calendar_system, "Google Calendar", "External calendar service used to fetch available time slots for schedule planning.")
+
+Rel(user, scheduler_system, "Submits mind dump, receives prioritized schedule")
+Rel(guest, scheduler_system, "Explores features, tries limited demo")
+Rel(scheduler_system, llm_provider, "Sends prompts, receives reasoning output")
+Rel(scheduler_system, calendar_system, "Reads available slots, writes scheduled events")
+
+@enduml

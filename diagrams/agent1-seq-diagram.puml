@@ -1,0 +1,63 @@
+@startuml
+title Sequence Diagram - Agent 1: Mind Dump Interpreter
+
+actor User
+participant "API Gateway\n(NestJS)" as API
+participant "Pipeline Runner" as Pipeline
+participant "Agent 1\nInterpreter" as Agent1
+participant "LLM Provider" as LLM
+participant "Task Tools" as Tools
+participant "Session State" as Session
+
+User -> API: POST /chat\n{input: "mind dump text"}
+API -> Pipeline: trigger_pipeline(input, session_id)
+Pipeline -> Session: initialize_session(session_id)
+Pipeline -> Agent1: run(input, session)
+
+loop ReAct Loop [until finalize_tasks called or max_iter reached]
+
+    Agent1 -> LLM: send_messages(system_prompt, user_input, history)
+    LLM --> Agent1: response\n{thought, tool_call: extract_tasks}
+
+    Agent1 -> Tools: extract_tasks(raw_text)
+    Tools --> Session: write tasks[]
+    Tools --> Agent1: {tasks: [...], needs_clarification: [...]}
+
+    Agent1 -> LLM: send_messages(history + tool_result)
+    LLM --> Agent1: response\n{thought, tool_call: ask_clarification}
+
+    Agent1 -> Tools: ask_clarification(task_id, question, missing_field)
+    Tools --> Agent1: {status: "waiting_for_user", question: "..."}
+
+    Agent1 --> API: stream question to UI
+    API --> User: "Kira-kira butuh berapa lama?"
+
+    User -> API: POST /chat\n{input: "sekitar 2 jam"}
+    API -> Agent1: resume(user_answer)
+
+    Agent1 -> LLM: send_messages(history + user_answer)
+    LLM --> Agent1: response\n{thought, tool_call: update_task}
+
+    Agent1 -> Tools: update_task(task_id, "duration", 120)
+    Tools --> Session: update tasks[id].duration = 120
+    Tools --> Agent1: {status: "updated"}
+
+    Agent1 -> LLM: send_messages(history + tool_result)
+
+    alt semua field lengkap
+        LLM --> Agent1: response\n{thought, tool_call: finalize_tasks}
+        Agent1 -> Tools: finalize_tasks()
+        Tools --> Session: write agent1_done = true
+        Tools --> Agent1: {status: "done", tasks: [...]}
+    else masih ada field kosong
+        LLM --> Agent1: response\n{thought, tool_call: ask_clarification}
+        note right: loop lanjut
+    end
+
+end
+
+Agent1 --> Pipeline: return session.tasks
+Pipeline --> API: {status: "agent1_complete"}
+API --> User: "Oke, tasks sudah tercatat!\nLanjut check-in kondisi kamu dulu ya."
+
+@enduml
