@@ -62,35 +62,29 @@ export default function HomePage() {
 
           {/* Right Floating Card */}
           <div className="md:w-[45%] flex justify-center md:justify-end mt-10 md:mt-0">
-            <div className="bg-white p-7 sm:p-9 rounded-[20px] shadow-[0_12px_45px_rgb(0,0,0,0.06)] border border-gray-100 flex flex-col gap-6 w-full max-w-[400px]">
+            <div className="bg-white p-10 sm:p-12 rounded-[24px] shadow-[0_12px_45px_rgb(0,0,0,0.06)] border border-[#000000]/10 flex flex-col gap-8 w-full max-w-[540px]">
               {/* Feature 1 */}
-              <div className="flex items-start gap-4">
-                <div className="w-[36px] h-[36px] shrink-0 flex items-center justify-center bg-gray-50 rounded-full">
-                  <img src="/images%20homepage/AI-Powered%20Analysis.webp" alt="AI Analysis" className="w-[22px] h-[22px] object-contain" />
-                </div>
-                <div className="flex flex-col mt-0.5">
-                  <h3 className="font-semibold text-[15px] text-[#0A0A0A]">AI-Powered Analysis</h3>
-                  <p className="text-[14px] text-[#717182] mt-1">Understands context and priorities</p>
+              <div className="flex items-center gap-6">
+                <img src="/images%20homepage/AI-Powered%20Analysis.webp" alt="AI Analysis" className="w-[52px] h-[52px] object-contain shrink-0" />
+                <div className="flex flex-col">
+                  <h3 className="font-semibold text-[18px] text-[#0A0A0A]">AI-Powered Analysis</h3>
+                  <p className="text-[16px] text-[#717182] mt-1">Understands context and priorities</p>
                 </div>
               </div>
               {/* Feature 2 */}
-              <div className="flex items-start gap-4">
-                <div className="w-[36px] h-[36px] shrink-0 flex items-center justify-center bg-gray-50 rounded-full">
-                  <img src="/images%20homepage/Smart%20Prioritization.webp" alt="Smart Prioritization" className="w-[22px] h-[22px] object-contain" />
-                </div>
-                <div className="flex flex-col mt-0.5">
-                  <h3 className="font-semibold text-[15px] text-[#0A0A0A]">Smart Prioritization</h3>
-                  <p className="text-[14px] text-[#717182] mt-1">Focuses on what matters most</p>
+              <div className="flex items-center gap-6">
+                <img src="/images%20homepage/Smart%20Prioritization.webp" alt="Smart Prioritization" className="w-[52px] h-[52px] object-contain shrink-0" />
+                <div className="flex flex-col">
+                  <h3 className="font-semibold text-[18px] text-[#0A0A0A]">Smart Prioritization</h3>
+                  <p className="text-[16px] text-[#717182] mt-1">Focuses on what matters most</p>
                 </div>
               </div>
               {/* Feature 3 */}
-              <div className="flex items-start gap-4">
-                <div className="w-[36px] h-[36px] shrink-0 flex items-center justify-center bg-gray-50 rounded-full">
-                  <img src="/images%20homepage/Actionable%20Schedules.webp" alt="Actionable Schedules" className="w-[22px] h-[22px] object-contain" />
-                </div>
-                <div className="flex flex-col mt-0.5">
-                  <h3 className="font-semibold text-[15px] text-[#0A0A0A]">Actionable Schedules</h3>
-                  <p className="text-[14px] text-[#717182] mt-1">Realistic timelines that fit your life</p>
+              <div className="flex items-center gap-6">
+                <img src="/images%20homepage/Actionable%20Schedules.webp" alt="Actionable Schedules" className="w-[52px] h-[52px] object-contain shrink-0" />
+                <div className="flex flex-col">
+                  <h3 className="font-semibold text-[18px] text-[#0A0A0A]">Actionable Schedules</h3>
+                  <p className="text-[16px] text-[#717182] mt-1">Realistic timelines that fit your life</p>
                 </div>
               </div>
             </div>
