@@ -1,42 +1,41 @@
 import {
   Controller,
   Get,
-  Post,
-  Body,
   Patch,
-  Param,
-  Delete,
+  Body,
+  UseGuards,
 } from '@nestjs/common';
-import { UsersService } from './users.service';
-import { CreateUserDto } from './dto/create-user.dto';
-import { UpdateUserDto } from './dto/update-user.dto';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiBearerAuth,
+  ApiResponse,
+} from '@nestjs/swagger';
+import { UsersService } from './users.service.js';
+import { JwtGuard } from '../auth/guard/jwt.guard.js';
+import { GetUser } from '../auth/decorator/get-user.decorator.js';
+import { EditUserDto } from './dto/edit-user.dto.js';
 
+@ApiTags('users')
+@ApiBearerAuth()
+@UseGuards(JwtGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(private readonly usersService: UsersService) { }
 
-  @Post()
-  create(@Body() createUserDto: CreateUserDto) {
-    return this.usersService.create(createUserDto);
+  @Get('me')
+  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiResponse({ status: 200, description: 'Returns the current user' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  getMe(@GetUser('id') userId: string) {
+    return this.usersService.getMe(userId);
   }
 
-  @Get()
-  findAll() {
-    return this.usersService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.usersService.findOne(+id);
-  }
-
-  @Patch(':id')
-  update(@Param('id') id: string, @Body() updateUserDto: UpdateUserDto) {
-    return this.usersService.update(+id, updateUserDto);
-  }
-
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.usersService.remove(+id);
+  @Patch()
+  @ApiOperation({ summary: 'Update current user profile' })
+  @ApiResponse({ status: 200, description: 'User updated successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  editUser(@GetUser('id') userId: string, @Body() dto: EditUserDto) {
+    return this.usersService.editUser(userId, dto);
   }
 }

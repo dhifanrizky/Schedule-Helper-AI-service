@@ -1,8 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+// @ts-ignore - Prisma generated client path
+import { PrismaClient } from '../../generated/prisma/client';
 
 @Injectable()
-export class PrismaService extends PrismaClient {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy {
   constructor() {
     const databaseUrl = process.env.DATABASE_URL;
 
@@ -10,7 +13,6 @@ export class PrismaService extends PrismaClient {
       throw new Error('DATABASE_URL is not defined');
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     super({
       datasources: {
         db: {
@@ -18,5 +20,17 @@ export class PrismaService extends PrismaClient {
         },
       },
     });
+  }
+
+  async onModuleInit() {
+    await this.$connect();
+  }
+
+  async onModuleDestroy() {
+    await this.$disconnect();
+  }
+
+  cleanDatabase() {
+    return this.$transaction([this.user.deleteMany()]);
   }
 }

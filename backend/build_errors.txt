@@ -1,0 +1,43 @@
+
+> backend@0.0.1 build
+> nest build
+
+[96msrc/modules/auth/auth.service.ts[0m:[93m22[0m:[93m38[0m - [91merror[0m[90m TS2339: [0mProperty 'user' does not exist on type 'PrismaService'.
+System.Management.Automation.RemoteException
+[7m22[0m       const user = await this.prisma.user.create({
+[7m  [0m [91m                                     ~~~~[0m
+[96msrc/modules/auth/auth.service.ts[0m:[93m48[0m:[93m36[0m - [91merror[0m[90m TS2339: [0mProperty 'user' does not exist on type 'PrismaService'.
+System.Management.Automation.RemoteException
+[7m48[0m     const user = await this.prisma.user.findUnique({
+[7m  [0m [91m                                   ~~~~[0m
+[96msrc/modules/auth/strategy/jwt.strategy.ts[0m:[93m25[0m:[93m40[0m - [91merror[0m[90m TS2339: [0mProperty 'user' does not exist on type 'PrismaService'.
+System.Management.Automation.RemoteException
+[7m25[0m         const user = await this.prisma.user.findUnique({
+[7m  [0m [91m                                       ~~~~[0m
+[96msrc/modules/prisma/prisma.service.ts[0m:[93m26[0m:[93m16[0m - [91merror[0m[90m TS2339: [0mProperty '$connect' does not exist on type 'PrismaService'.
+System.Management.Automation.RemoteException
+[7m26[0m     await this.$connect();
+[7m  [0m [91m               ~~~~~~~~[0m
+[96msrc/modules/prisma/prisma.service.ts[0m:[93m30[0m:[93m16[0m - [91merror[0m[90m TS2339: [0mProperty '$disconnect' does not exist on type 'PrismaService'.
+System.Management.Automation.RemoteException
+[7m30[0m     await this.$disconnect();
+[7m  [0m [91m               ~~~~~~~~~~~[0m
+[96msrc/modules/prisma/prisma.service.ts[0m:[93m34[0m:[93m17[0m - [91merror[0m[90m TS2339: [0mProperty '$transaction' does not exist on type 'PrismaService'.
+System.Management.Automation.RemoteException
+[7m34[0m     return this.$transaction([this.user.deleteMany()]);
+[7m  [0m [91m                ~~~~~~~~~~~~[0m
+[96msrc/modules/prisma/prisma.service.ts[0m:[93m34[0m:[93m36[0m - [91merror[0m[90m TS2339: [0mProperty 'user' does not exist on type 'PrismaService'.
+System.Management.Automation.RemoteException
+[7m34[0m     return this.$transaction([this.user.deleteMany()]);
+[7m  [0m [91m                                   ~~~~[0m
+[96msrc/modules/users/users.service.ts[0m:[93m10[0m:[93m36[0m - [91merror[0m[90m TS2339: [0mProperty 'user' does not exist on type 'PrismaService'.
+System.Management.Automation.RemoteException
+[7m10[0m     const user = await this.prisma.user.findUnique({
+[7m  [0m [91m                                   ~~~~[0m
+[96msrc/modules/users/users.service.ts[0m:[93m24[0m:[93m36[0m - [91merror[0m[90m TS2339: [0mProperty 'user' does not exist on type 'PrismaService'.
+System.Management.Automation.RemoteException
+[7m24[0m     const user = await this.prisma.user.update({
+[7m  [0m [91m                                   ~~~~[0m
+System.Management.Automation.RemoteException
+Found 9 error(s).
+
