@@ -1,16 +1,17 @@
 from app.graph.state import AppState
 from app.graph.agents.helpers import get_task_breakdown, get_metadata, ai_msg
+from app.graph.types import TaskBreakdown
 
 # ---------------------------------------------------------------------------
 # Agent 4: SchedulerAgent
-# Tidak ada HITL - langsung eksekusi setelah task_list diapprove.
+# Tidak ada HITL - langsung eksekusi setelah task_breakdown diapprove.
 # ---------------------------------------------------------------------------
 
 
 def make_scheduler(llm, calendar_client):
     """
     Factory untuk SchedulerAgent.
-    Tugas: buat event di Google Calendar dari task_list yang sudah diapprove.
+    Tugas: buat event di Google Calendar dari task_breakdown yang sudah diapprove.
     """
 
     def run(state: AppState) -> dict:
@@ -32,7 +33,7 @@ def make_scheduler(llm, calendar_client):
     return run
 
 
-def _schedule_tasks(calendar_client, tasks: list[dict], metadata: dict) -> list[str]:
+def _schedule_tasks(calendar_client, tasks: list[TaskBreakdown], metadata: dict) -> list[str]:
     """
     TODO: implementasi logika create event di Google Calendar.
     Return list of event IDs yang berhasil dibuat.

@@ -1,4 +1,4 @@
-import uuid
+﻿import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.messages import HumanMessage
 from app.api.schemas import ChatRequest, ChatResponse
@@ -28,9 +28,7 @@ async def chat(body: ChatRequest, graph=Depends(get_graph)):
                 "messages": [HumanMessage(content=body.message)],
                 "user_input": body.message,
                 "current_intent": None,
-                "intent": None,
                 "raw_tasks": [],
-                "task_list": [],
                 "counselor_response": [],
                 "counselor_done": False,
                 "task_breakdown": [],

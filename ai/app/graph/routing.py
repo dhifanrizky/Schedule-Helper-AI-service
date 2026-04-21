@@ -16,5 +16,5 @@ ROUTING_MAP: dict[str, str] = {
 
 
 def route_by_intent(state: AppState) -> str:
-    intent = state.get("current_intent") or state.get("intent") or "general"
+    intent = state.get("current_intent") or "general"
     return ROUTING_MAP.get(intent, END)

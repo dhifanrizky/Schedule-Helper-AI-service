@@ -1,5 +1,6 @@
 from langchain_core.messages import AIMessage
 from app.graph.state import AppState
+from app.graph.types import RawTask, ScheduleItem, TaskBreakdown
 
 
 def last_message(state: AppState) -> str:
@@ -30,26 +31,22 @@ def ai_msg(text: str) -> dict:
 
 
 def get_current_intent(state: AppState) -> str | None:
-    return state.get("current_intent") or state.get("intent")
+    return state.get("current_intent") 
 
 
 def get_intent(state: AppState) -> str | None:
     return get_current_intent(state)
 
 
-def get_raw_tasks(state: AppState) -> list[str]:
+def get_raw_tasks(state: AppState) -> list[RawTask]:
     return state.get("raw_tasks") or []
 
 
-def get_task_breakdown(state: AppState) -> list[dict]:
-    return state.get("task_breakdown") or state.get("task_list") or []
+def get_task_breakdown(state: AppState) -> list[TaskBreakdown]:
+    return state.get("task_breakdown") or []
 
 
-def get_task_list(state: AppState) -> list[dict]:
-    return get_task_breakdown(state)
-
-
-def get_proposed_schedule(state: AppState) -> list[dict]:
+def get_proposed_schedule(state: AppState) -> list[ScheduleItem]:
     return state.get("proposed_schedule") or []
 
 

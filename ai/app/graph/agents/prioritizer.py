@@ -1,6 +1,7 @@
 from langgraph.types import interrupt
 from app.graph.state import AppState
 from app.graph.agents.helpers import last_message, ai_msg
+from app.graph.types import RawTask, TaskBreakdown
 
 # ---------------------------------------------------------------------------
 # Agent 3: PrioritizerAgent
@@ -40,10 +41,9 @@ def make_prioritizer(llm):
         })
 
         final_tasks = hitl_result.get("tasks") or tasks
-        final_raw_tasks = [task.get("task", "") for task in final_tasks if isinstance(task, dict)]
+        final_raw_tasks = _build_raw_tasks(final_tasks)
         return {
             "raw_tasks": final_raw_tasks,
-            "task_list": final_tasks,
             "task_breakdown": final_tasks,
             **ai_msg(f"Siap, {len(final_tasks)} tugas akan dijadwalkan."),
             "hitl_status": "approved",
@@ -53,9 +53,25 @@ def make_prioritizer(llm):
     return run
 
 
-def _extract_tasks(llm, user_msg: str) -> list[dict]:
+def _extract_tasks(llm, user_msg: str) -> list[TaskBreakdown]:
     """
     TODO: implementasi logika ekstraksi task dari pesan user.
-    Return format: [{"task": str, "priority": int, "deadline": str | None}]
+    Return format mengikuti TaskBreakdown.
     """
     raise NotImplementedError
+
+
+def _build_raw_tasks(tasks: list[TaskBreakdown]) -> list[RawTask]:
+    raw_tasks: list[RawTask] = []
+    for idx, task in enumerate(tasks, start=1):
+        task_id = task.get("task_id") or f"task_{idx:03d}"
+        title = task.get("title") or ""
+        raw_tasks.append(
+            {
+                "task_id": task_id,
+                "title": title,
+                "raw_input": title,
+                "category": "lainnya",
+            }
+        )
+    return raw_tasks
