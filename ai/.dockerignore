@@ -1,0 +1,11 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.coverage
+.env
+*.egg-info
+tests/
+README.md
+docker-compose.yml

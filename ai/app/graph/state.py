@@ -8,5 +8,5 @@ class AppState(TypedDict):
     intent:      str | None
     task_list:   list[dict]
     metadata:    dict
-    hitl_status: str | None
-    hitl_input:  dict | None
+    hitl_status: str | None   # "waiting" | "approved" | None
+    hitl_input:  dict | None  # data yang dikirim dari /resume
