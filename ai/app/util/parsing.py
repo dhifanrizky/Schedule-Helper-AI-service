@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from agents.agent1_interpreter import Task
+from app.graph.agents.agent1_interpreter import Task
 
 def _parse_llm_json(raw: str) -> Any:
     """Strip markdown fence jika ada, lalu parse JSON."""

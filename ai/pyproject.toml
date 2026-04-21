@@ -10,5 +10,6 @@ dependencies = [
     "langchain-google-community>=3.0.5",
     "langchain-ollama>=1.1.0",
     "langchain-qwq>=0.3.4",
+    "langgraph-checkpoint-redis>=0.4.1",
     "load-dotenv>=0.1.0",
 ]

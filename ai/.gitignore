@@ -107,5 +107,5 @@ docker-compose.override.yml
 .coverage
 htmlcov/
 
-util/credentials.json
-util/token.json
+credentials.json
+token.json
