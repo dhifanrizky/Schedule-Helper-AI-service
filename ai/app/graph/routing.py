@@ -2,7 +2,7 @@ from langgraph.graph import END
 from app.graph.state import AppState
 
 # ---------------------------------------------------------------------------
-# Mapping intent → node name.
+# Mapping intent -> node name.
 # Tambah intent baru = tambah entry di ROUTING_MAP saja.
 # ---------------------------------------------------------------------------
 
@@ -16,5 +16,5 @@ ROUTING_MAP: dict[str, str] = {
 
 
 def route_by_intent(state: AppState) -> str:
-    intent = state.get("intent") or "general"
+    intent = state.get("current_intent") or state.get("intent") or "general"
     return ROUTING_MAP.get(intent, END)

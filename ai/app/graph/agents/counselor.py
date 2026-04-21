@@ -43,6 +43,8 @@ def make_counselor(llm):
         final = hitl_result.get("edited_draft") or draft
         return {
             **ai_msg(final),
+            "counselor_response": [final],
+            "counselor_done": True,
             "hitl_status": "approved",
             "hitl_input": None,
         }

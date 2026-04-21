@@ -25,12 +25,23 @@ async def chat(body: ChatRequest, graph=Depends(get_graph)):
     try:
         await graph.ainvoke(
             {
-                "messages":    [HumanMessage(content=body.message)],
-                "intent":      None,
-                "task_list":   [],
-                "metadata":    {"user_id": body.user_id},
+                "messages": [HumanMessage(content=body.message)],
+                "user_input": body.message,
+                "current_intent": None,
+                "intent": None,
+                "raw_tasks": [],
+                "task_list": [],
+                "counselor_response": [],
+                "counselor_done": False,
+                "task_breakdown": [],
+                "proposed_schedule": [],
+                "api_status": None,
+                "api_payload": None,
+                "final_message": None,
+                "error_message": None,
+                "metadata": {"user_id": body.user_id},
                 "hitl_status": None,
-                "hitl_input":  None,
+                "hitl_input": None,
             },
             config=config,
         )

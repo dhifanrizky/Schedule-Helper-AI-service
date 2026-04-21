@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from app.graph.types import ScheduleItem
+
 
 # ── Request schemas ───────────────────────────────────────────────────────────
 
@@ -40,9 +42,17 @@ class ResumeResponse(BaseModel):
 
 
 class StateResponse(BaseModel):
-    thread_id:   str
-    pending_hitl: bool
-    next_node:   list[str]
-    intent:      str | None
-    task_list:   list[dict]
-    hitl_payload: dict | None
+    thread_id:         str
+    pending_hitl:      bool
+    next_node:         list[str]
+    current_intent:    str | None
+    raw_tasks:         list[str]
+    counselor_response: list[str]
+    counselor_done:     bool
+    task_breakdown:    list[dict]
+    proposed_schedule: list[ScheduleItem]
+    api_status:        int | None
+    api_payload:       dict | None
+    final_message:     str | None
+    error_message:     str | None
+    hitl_payload:      dict | None

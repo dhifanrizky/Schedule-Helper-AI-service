@@ -1,9 +1,9 @@
 from app.graph.state import AppState
-from app.graph.agents.helpers import get_task_list, get_metadata, ai_msg
+from app.graph.agents.helpers import get_task_breakdown, get_metadata, ai_msg
 
 # ---------------------------------------------------------------------------
 # Agent 4: SchedulerAgent
-# Tidak ada HITL — langsung eksekusi setelah task_list diapprove.
+# Tidak ada HITL - langsung eksekusi setelah task_list diapprove.
 # ---------------------------------------------------------------------------
 
 
@@ -14,7 +14,7 @@ def make_scheduler(llm, calendar_client):
     """
 
     def run(state: AppState) -> dict:
-        tasks = get_task_list(state)
+        tasks = get_task_breakdown(state)
         metadata = get_metadata(state)
 
         # TODO: implementasi logika scheduling ke Google Calendar
