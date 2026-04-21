@@ -4,15 +4,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import chat, resume, state
 from app.dependencies import get_graph
 from app.config import settings
-
+from app.services.checkpointer import init_checkpointer, close_checkpointer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # warm up graph saat startup supaya request pertama tidak lambat
+    init_checkpointer()
+
+    # warmup graph
     get_graph()
+
     yield
 
-
+    # cleanup
+    close_checkpointer()
+    
 app = FastAPI(
     title="AI Agent App",
     version="0.1.0",
