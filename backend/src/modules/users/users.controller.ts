@@ -21,13 +21,13 @@ import { EditUserDto } from './dto/edit-user.dto.js';
 @UseGuards(JwtGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) { }
+  constructor(private readonly usersService: UsersService) {}
 
   @Get('me')
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'Returns the current user' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  getMe(@GetUser('id') userId: string) {
+  getMe(@GetUser('id') userId: number) {
     return this.usersService.getMe(userId);
   }
 
@@ -35,7 +35,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Update current user profile' })
   @ApiResponse({ status: 200, description: 'User updated successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  editUser(@GetUser('id') userId: string, @Body() dto: EditUserDto) {
+  editUser(@GetUser('id') userId: number, @Body() dto: EditUserDto) {
     return this.usersService.editUser(userId, dto);
   }
 }

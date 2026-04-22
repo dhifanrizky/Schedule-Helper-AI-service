@@ -4,9 +4,9 @@ import { EditUserDto } from './dto/edit-user.dto.js';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) { }
+  constructor(private prisma: PrismaService) {}
 
-  async getMe(userId: string) {
+  async getMe(userId: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -20,7 +20,7 @@ export class UsersService {
     return userWithoutHash;
   }
 
-  async editUser(userId: string, dto: EditUserDto) {
+  async editUser(userId: number, dto: EditUserDto) {
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: { ...dto },

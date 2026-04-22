@@ -11,7 +11,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwt: JwtService,
     private config: ConfigService,
-  ) { }
+  ) {}
 
   async signup(dto: SignupDto) {
     // Hash the password
@@ -23,8 +23,7 @@ export class AuthService {
         data: {
           email: dto.email,
           hash,
-          firstName: dto.firstName,
-          lastName: dto.lastName,
+          name: dto.name,
         },
       });
 
@@ -65,7 +64,7 @@ export class AuthService {
   }
 
   async signToken(
-    userId: string,
+    userId: number,
     email: string,
   ): Promise<{ access_token: string }> {
     const payload = {

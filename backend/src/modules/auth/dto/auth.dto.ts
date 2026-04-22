@@ -2,36 +2,31 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class SignupDto {
-    @ApiProperty({ example: 'user@example.com' })
-    @IsEmail()
-    @IsNotEmpty()
-    email!: string;
+  @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email!: string;
 
-    @ApiProperty({ example: 'password123', minLength: 6 })
-    @IsString()
-    @IsNotEmpty()
-    @MinLength(6)
-    password!: string;
+  @ApiProperty({ example: 'password123', minLength: 6 })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(6)
+  password!: string;
 
-    @ApiProperty({ example: 'John', required: false })
-    @IsString()
-    @IsOptional()
-    firstName?: string;
-
-    @ApiProperty({ example: 'Doe', required: false })
-    @IsString()
-    @IsOptional()
-    lastName?: string;
+  @ApiProperty({ example: 'John Doe', required: false })
+  @IsString()
+  @IsOptional()
+  name?: string;
 }
 
 export class SigninDto {
-    @ApiProperty({ example: 'user@example.com' })
-    @IsEmail()
-    @IsNotEmpty()
-    email!: string;
+  @ApiProperty({ example: 'user@example.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email!: string;
 
-    @ApiProperty({ example: 'password123' })
-    @IsString()
-    @IsNotEmpty()
-    password!: string;
+  @ApiProperty({ example: 'password123' })
+  @IsString()
+  @IsNotEmpty()
+  password!: string;
 }
