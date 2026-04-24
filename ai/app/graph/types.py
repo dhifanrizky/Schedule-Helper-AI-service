@@ -4,21 +4,22 @@ import operator
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 
-category=Literal["kuliah", "tugas", "istirahat", "lainnya"]
+CategoryType = Literal["kuliah", "tugas", "istirahat", "lainnya"]
+PreferredWindow = Literal["pagi", "siang", "sore", "malam", "bebas"]
 
 class ScheduleItem(TypedDict):
-    task_id: int
+    task_id: str
     task: str
     priority: int
     start_time: str
     duration_minutes: int
-    category: category
+    category: CategoryType
 
 class RawTask(TypedDict):
     task_id: str          # "task_001"
     title: str
     raw_input: str        # persis kata user
-    category: category
+    category: CategoryType
 
 class TaskBreakdown(TypedDict):
     task_id: str          # foreign key ke RawTask
@@ -27,6 +28,8 @@ class TaskBreakdown(TypedDict):
     estimated_minutes: int
     deadline: str | None  # ISO 8601
     priority: int         # 1 = tertinggi
+    category: CategoryType
+    preferred_window: PreferredWindow
 
 class GraphState(TypedDict, total=False):
     # conversation
