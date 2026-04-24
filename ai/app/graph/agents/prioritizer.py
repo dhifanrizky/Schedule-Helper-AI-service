@@ -78,7 +78,7 @@ def detect_preferred_window(task: str) -> str:
     return "bebas"
 
 
-def detect_category(task: str) -> str:
+def detect_category(task: str) -> str: #ini aku ubah ya categorynya jadi bisa disesuaiin thx
     text = task.lower()
 
     if any(k in text for k in ["kuliah", "kelas", "materi", "belajar", "dokumentasi", "langgraph"]):

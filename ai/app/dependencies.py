@@ -16,6 +16,10 @@ INTENT_MAP: dict[str, list[str]] = {
     "schedule":    ["jadwalkan", "kalender", "reminder", "meeting"],
 }
 
+ROUTER_LLM_PROVIDER = "groq"
+ROUTER_LLM_MODEL = "llama-3.3-70b-versatile"
+ROUTER_LLM_TEMPERATURE = 0.3
+
 @lru_cache
 def get_graph() -> CompiledStateGraph:
     """
@@ -23,20 +27,20 @@ def get_graph() -> CompiledStateGraph:
     Tiap agent di-inject dengan model LLM yang paling optimal untuk tugasnya.
     """
     
-    # 1. Router: Butuh speed & JSON akurat -> Pakai Groq (Llama 3 8B), Temp 0
+    # 1. Router: Butuh speed & JSON akurat 
     router_llm = get_llm(
-        provider="groq",
-        model="llama-3.1-8b-instant", 
-        temperature=0.1
+        provider=ROUTER_LLM_PROVIDER,
+        model=ROUTER_LLM_MODEL,
+        temperature=ROUTER_LLM_TEMPERATURE,
     )
     
-    # 2. Counselor: Butuh empati tinggi -> Pakai OpenAI (GPT-4o-mini), Temp 0.7
+    # 2. Counselor: Butuh empati tinggi 
     counselor_llm = get_llm("openai", "gpt-4o-mini", temperature=0.7)
     
-    # 3. Prioritizer: Butuh logika urutan mantap -> Pakai Gemini Flash, Temp 0.2
+    # 3. Prioritizer: Butuh logika urutan mantap 
     prioritizer_llm = get_llm("openai", "gemini-1.5-flash", temperature=0.2)
     
-    # 4. Scheduler: Butuh function calling konsisten -> Pakai OpenAI/Groq, Temp 0
+    # 4. Scheduler: Butuh function calling konsisten 
     scheduler_llm = get_llm("openai", "gpt-4o-mini", temperature=0.0)
 
     agents = {

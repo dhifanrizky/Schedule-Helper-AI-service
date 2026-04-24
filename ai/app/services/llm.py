@@ -1,4 +1,5 @@
 from langchain_openai import ChatOpenAI
+from langchain_groq import ChatGroq
 from app.config import settings
 
 def get_llm(provider: str, model: str, temperature: float = 0.0, **kwargs):
@@ -17,9 +18,8 @@ def get_llm(provider: str, model: str, temperature: float = 0.0, **kwargs):
     elif provider == "groq":
         if not settings.groq_api_key:
             raise ValueError("GROQ_API_KEY tidak ditemukan di .env")
-        return ChatOpenAI(
+        return ChatGroq(
             api_key=settings.groq_api_key, # type: ignore
-            base_url="https://api.groq.com/openai/v1",
             model=model,
             temperature=temperature,
             model_kwargs=kwargs

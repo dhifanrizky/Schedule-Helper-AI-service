@@ -1,12 +1,13 @@
-from typing import Annotated, Literal, TypedDict
+from typing import Annotated, Literal, Optional, TypedDict
 import operator
 
 from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel, Field
 
-CategoryType = Literal["kuliah", "tugas", "istirahat", "lainnya"]
+CategoryType = Literal["serius", "santai", "biasa", "lainnya"]
 PreferredWindow = Literal["pagi", "siang", "sore", "malam", "bebas"]
-
+IntentType = Literal["stress", "overload", "manage_task", "schedule"]
 class ScheduleItem(TypedDict):
     task_id: str
     task: str
@@ -15,10 +16,16 @@ class ScheduleItem(TypedDict):
     duration_minutes: int
     category: CategoryType
 
-class RawTask(TypedDict):
-    task_id: str          # "task_001"
-    title: str
-    raw_input: str        # persis kata user
+class RawTask(BaseModel):
+    task_id: str = Field(description="ID sekuensial, mulai dari task_001")
+    title: str = Field(description="Judul singkat dalam bahasa user")
+     
+    description: str = Field(
+        description="JANGAN sekadar merangkum! Kamu WAJIB mendeskripsikan 2 hal secara eksplisit menggunakan bahasa user: (1) Apa perasaan/tingkat urgensi user (jika tidak ada, tulis 'Perasaan tidak disebutkan eksplisit'), (2) Detail apa yang masih belum jelas atau tidak disebutkan (misal: nama matkul, detail topik)."
+    )
+    
+    raw_time: Optional[str] = Field(description="Frasa waktu dari ucapan user, atau null jika tidak ada")
+    raw_input: str = Field(description="Kalimat asli yang diucapkan user")
     category: CategoryType
 
 class TaskBreakdown(TypedDict):
@@ -32,16 +39,13 @@ class TaskBreakdown(TypedDict):
     preferred_window: PreferredWindow
 
 class RouterOutput(TypedDict):
-    current_intent: Literal["stress", "overload", "manage_task", "schedule"] | None
+    current_intent: IntentType | None
     raw_tasks: list[RawTask]
 
-class GraphState(TypedDict, total=False):
+class GraphState(RouterOutput, total=False):
     # conversation
     messages: Annotated[list[BaseMessage], add_messages]
     user_input: str
-
-    # agent 1
-    router_data: RouterOutput 
 
     # agent 2
     counselor_response: Annotated[list[str], operator.add] 
