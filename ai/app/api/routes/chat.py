@@ -43,6 +43,7 @@ async def chat(body: ChatRequest, graph=Depends(get_graph)):
             },
             config=config,
         )
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

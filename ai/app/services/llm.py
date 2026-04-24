@@ -1,12 +1,29 @@
-from functools import lru_cache
 from langchain_openai import ChatOpenAI
 from app.config import settings
 
+def get_llm(provider: str, model: str, temperature: float = 0.0, **kwargs):
+    """
+    Factory function untuk mengembalikan model AI secara spesifik.
+    """
+    if provider == "openai":
+        if not settings.openai_api_key:
+            raise ValueError("OPENAI_API_KEY tidak ditemukan di .env")
+        return ChatOpenAI(
+            api_key=settings.openai_api_key, # type: ignore
+            model=model,
+            temperature=temperature
+        )
+        
+    elif provider == "groq":
+        if not settings.groq_api_key:
+            raise ValueError("GROQ_API_KEY tidak ditemukan di .env")
+        return ChatOpenAI(
+            api_key=settings.groq_api_key, # type: ignore
+            base_url="https://api.groq.com/openai/v1",
+            model=model,
+            temperature=temperature,
+            model_kwargs=kwargs
+        )
 
-@lru_cache
-def get_llm() -> ChatOpenAI:
-    return ChatOpenAI(
-        api_key=settings.openai_api_key, # type: ignore
-        model=settings.openai_model,
-        temperature=0.7,
-    )
+    else:
+        raise ValueError(f"Provider LLM '{provider}' belum didukung.")

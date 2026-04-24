@@ -31,14 +31,17 @@ class TaskBreakdown(TypedDict):
     category: CategoryType
     preferred_window: PreferredWindow
 
+class RouterOutput(TypedDict):
+    current_intent: Literal["stress", "overload", "manage_task", "schedule"] | None
+    raw_tasks: list[RawTask]
+
 class GraphState(TypedDict, total=False):
     # conversation
     messages: Annotated[list[BaseMessage], add_messages]
     user_input: str
 
     # agent 1
-    current_intent: Literal["stress", "overload", "manage_task", "schedule"] | None
-    raw_tasks: list[RawTask]       
+    router_data: RouterOutput 
 
     # agent 2
     counselor_response: Annotated[list[str], operator.add] 

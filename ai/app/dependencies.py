@@ -9,10 +9,6 @@ from app.graph.agents.scheduler import make_scheduler
 from app.graph.builder import build_graph
 from langgraph.graph.state import CompiledStateGraph
 
-# ---------------------------------------------------------------------------
-# Intent map — tambah intent baru di sini, tidak perlu ubah file lain.
-# ---------------------------------------------------------------------------
-
 INTENT_MAP: dict[str, list[str]] = {
     "stress":      ["stres", "overwhelmed", "pusing", "anxious"],
     "overload":    ["kewalahan", "numpuk", "banyak banget", "tidak sanggup"],
@@ -20,18 +16,34 @@ INTENT_MAP: dict[str, list[str]] = {
     "schedule":    ["jadwalkan", "kalender", "reminder", "meeting"],
 }
 
-
 @lru_cache
 def get_graph() -> CompiledStateGraph:
     """
     Inisialisasi dan compile graph sekali — di-cache selama app hidup.
-    Semua dependency di-inject di sini.
+    Tiap agent di-inject dengan model LLM yang paling optimal untuk tugasnya.
     """
-    llm = get_llm()
+    
+    # 1. Router: Butuh speed & JSON akurat -> Pakai Groq (Llama 3 8B), Temp 0
+    router_llm = get_llm(
+        provider="groq",
+        model="llama-3.1-8b-instant", 
+        temperature=0.1
+    )
+    
+    # 2. Counselor: Butuh empati tinggi -> Pakai OpenAI (GPT-4o-mini), Temp 0.7
+    counselor_llm = get_llm("openai", "gpt-4o-mini", temperature=0.7)
+    
+    # 3. Prioritizer: Butuh logika urutan mantap -> Pakai Gemini Flash, Temp 0.2
+    prioritizer_llm = get_llm("openai", "gemini-1.5-flash", temperature=0.2)
+    
+    # 4. Scheduler: Butuh function calling konsisten -> Pakai OpenAI/Groq, Temp 0
+    scheduler_llm = get_llm("openai", "gpt-4o-mini", temperature=0.0)
+
     agents = {
-        "router":      make_router(INTENT_MAP),
-        "counselor":   make_counselor(llm),
-        "prioritizer": make_prioritizer(llm),
-        "scheduler":   make_scheduler(llm, get_calendar_client()),
+        "router":      make_router(INTENT_MAP, router_llm),
+        "counselor":   make_counselor(counselor_llm),
+        "prioritizer": make_prioritizer(prioritizer_llm),
+        "scheduler":   make_scheduler(scheduler_llm, get_calendar_client()),
     }
+    
     return build_graph(agents, checkpointer=get_checkpointer())

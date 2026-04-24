@@ -1,13 +1,13 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
+from typing import Optional
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # LLM
-    openai_api_key: str
-    openai_model: str = "gpt-4o-mini"
-
+    # API Keys (Bisa diisi mana yang mau dipakai)
+    openai_api_key: Optional[str] = None
+    groq_api_key: Optional[str] = None
+    
     # Redis
     redis_url: str = "redis://localhost:6379"
 
@@ -18,10 +18,5 @@ class Settings(BaseSettings):
     # App
     app_env: str = "development"
     log_level: str = "INFO"
-
-    @property
-    def is_production(self) -> bool:
-        return self.app_env == "production"
-
 
 settings = Settings() # type: ignore
