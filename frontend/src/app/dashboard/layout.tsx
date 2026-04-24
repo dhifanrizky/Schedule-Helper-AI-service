@@ -145,7 +145,10 @@ export default function DashboardLayout({
 
         {/* Dynamic User Profile Section */}
         <div className="p-4 border-t border-gray-100">
-          <div className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors">
+          <div 
+            onClick={() => router.push("/dashboard/profile")}
+            className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
+          >
             {isUserLoading || !user ? (
               <>
                 <div className="w-10 h-10 bg-[#C2C2C2] rounded-full animate-pulse shrink-0" />
