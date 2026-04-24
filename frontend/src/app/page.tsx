@@ -45,7 +45,7 @@ export default function HomePage() {
             </p>
             <div className="flex flex-wrap items-center gap-4 mt-6">
               <Link 
-                href="/auth/register" 
+                href="/demo" 
                 className="flex items-center justify-center gap-2 bg-[#8A38F5] hover:opacity-90 text-white px-6 py-3.5 rounded-xl text-[16px] font-medium shadow-md transition-all"
               >
                 Try Demo
@@ -145,7 +145,7 @@ export default function HomePage() {
 
         <div className="flex flex-wrap items-center justify-center gap-4">
           <Link 
-            href="/auth/register" 
+            href="/demo" 
             className="flex items-center justify-center bg-white border border-gray-200 hover:bg-gray-50 text-[#0A0A0A] px-7 py-3.5 rounded-xl text-[15px] font-medium shadow-sm transition-all"
           >
             Try Demo First
