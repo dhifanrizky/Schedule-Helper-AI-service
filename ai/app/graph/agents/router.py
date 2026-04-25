@@ -41,6 +41,7 @@ HARD RULES FOR EXTRACTION:
 6. MATCH THE LANGUAGE: You MUST write the "title", "description", and "raw_time" using the exact same language and tone as the user's input (e.g., if the user uses informal Indonesian slang, write the output in informal Indonesian).
 7. SEPARATE DISTINCT TASKS: If the user mentions multiple DIFFERENT tasks (e.g., "tugas RPL" and "laprak termo"), you MUST extract them as SEPARATE items in the array. 
 8. NO DUPLICATES: Only merge phrases if they describe the EXACT SAME task.
+9. EXTRACT VAGUE TASKS: If the user mentions a general/vague group of tasks (e.g., "tugas numpuk", "banyak kerjaan"), you MUST STILL extract it as a separate task item. In the description, state clearly that the specific tasks are unknown.
 
 INTENT SELECTION LOGIC:
 - "overload": Choose this if the user emphasizes the QUANTITY or VOLUME of tasks (e.g., "tugas numpuk", "banyak banget"). The root cause is having too much to do.

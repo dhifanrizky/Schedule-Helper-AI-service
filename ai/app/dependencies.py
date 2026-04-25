@@ -66,4 +66,5 @@ async def get_graph() -> CompiledStateGraph:
         }
 
         _graph = build_graph(agents, checkpointer=await get_checkpointer())
+
         return _graph
