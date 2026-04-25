@@ -1,29 +1,28 @@
-from langgraph.checkpoint.redis import RedisSaver
+from langgraph.checkpoint.redis import AsyncRedisSaver
 from app.config import settings
 from typing import Any
 
-_checkpointer: RedisSaver | None = None
+_checkpointer: AsyncRedisSaver | None = None
 _checkpointer_cm: Any | None = None
 
 
-def init_checkpointer() -> RedisSaver:
+async def init_checkpointer() -> AsyncRedisSaver:
     global _checkpointer, _checkpointer_cm
     if _checkpointer is None:
-        _checkpointer_cm = RedisSaver.from_conn_string(settings.redis_url)
-        _checkpointer = _checkpointer_cm.__enter__()
-    assert _checkpointer is not None
-    return _checkpointer
+        _checkpointer_cm = AsyncRedisSaver.from_conn_string(settings.redis_url)
+        _checkpointer = await _checkpointer_cm.__aenter__()
+    return _checkpointer # type: ignore
 
-def get_checkpointer() -> RedisSaver:
+
+async def get_checkpointer() -> AsyncRedisSaver:
     if _checkpointer is None:
-        return init_checkpointer()
-    assert _checkpointer is not None
+        return await init_checkpointer()
     return _checkpointer
 
 
-def close_checkpointer() -> None:
+async def close_checkpointer() -> None:
     global _checkpointer, _checkpointer_cm
     if _checkpointer_cm is not None:
-        _checkpointer_cm.__exit__(None, None, None)
+        await _checkpointer_cm.__aexit__(None, None, None)
         _checkpointer_cm = None
         _checkpointer = None

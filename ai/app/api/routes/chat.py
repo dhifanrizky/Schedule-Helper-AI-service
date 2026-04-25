@@ -1,10 +1,20 @@
-﻿import uuid
+﻿import traceback
+import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from langchain_core.messages import HumanMessage
 from app.api.schemas import ChatRequest, ChatResponse
 from app.dependencies import get_graph
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+
+
+async def _print_step_state(graph, config: dict, thread_id: str, step_update: dict) -> None:
+    state = await graph.aget_state(config)
+    node = next(iter(step_update.keys()), "unknown") if isinstance(step_update, dict) else "unknown"
+    print(
+        f"[graph-step][chat][thread_id={thread_id}] "
+        f"node={node} next={list(state.next)} values={state.values}"
+    )
 
 
 @router.post("", response_model=ChatResponse)
@@ -23,7 +33,7 @@ async def chat(body: ChatRequest, graph=Depends(get_graph)):
     config = {"configurable": {"thread_id": thread_id}}
 
     try:
-        await graph.ainvoke(
+        async for step_update in graph.astream(
             {
                 "messages": [HumanMessage(content=body.message)],
                 "user_input": body.message,
@@ -42,12 +52,14 @@ async def chat(body: ChatRequest, graph=Depends(get_graph)):
                 "hitl_input": None,
             },
             config=config,
-        )
+            stream_mode="updates",
+        ):
+            await _print_step_state(graph, config, thread_id, step_update)
     
     except Exception as e:
+        traceback.print_exc()  # ⬅️ ini penting
         raise HTTPException(status_code=500, detail=str(e))
-
-    state = graph.get_state(config)
+    state = await graph.aget_state(config)
     is_waiting = bool(state.next)
 
     # kalau graph interrupt, ambil payload dari tasks interrupt

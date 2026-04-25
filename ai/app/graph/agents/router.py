@@ -5,6 +5,9 @@ from pydantic import BaseModel, Field
 from app.graph.agents.helpers import last_message
 from app.graph.state import AppState
 from app.graph.types import RawTask
+from typing import Literal # Pastikan ini di-import
+
+
 
 # ---------------------------------------------------------------------------
 # Isi INTENT_MAP dan logic _classify() sesuai kebutuhanmu.
@@ -13,15 +16,15 @@ from app.graph.types import RawTask
 
 type IntentMap = dict[str, list[str]]
 
-
 class RouterOutputSchema(BaseModel):
-    current_intent: str | None = Field(
+    # Pakai Literal agar LLM benar-benar dibatasi secara matematis
+    current_intent: Literal["stress", "overload", "manage_task", "schedule"] | None = Field(
         default=None,
-        description="Overall user intent.",
+        description="Overall user intent. Must strictly match one of the allowed values.",
     )
     raw_tasks: list[RawTask] = Field(
         default_factory=list,
-        description="Raw tasks extracted from the user's message. Merge related phrases into a single task.",
+        description="Extract EACH distinct task/event as a SEPARATE item. If user mentions 3 different tasks, output 3 items.",
     )
 
 SYSTEM_PROMPT = """
@@ -33,10 +36,16 @@ HARD RULES FOR EXTRACTION:
 1. "current_intent" MUST be exactly one of: ["stress", "overload", "manage_task", "schedule", null].
 2. "category" MUST be exactly one of: ["serius", "santai", "biasa", "lainnya", null].
 3. "task_id" MUST be sequential starting from "task_001".
-4. "raw_input" MUST be the exact words used by the user.
+4. "raw_input" MUST be the exact words used by the user for that specific task.
 5. "raw_time" MUST be filled with the time phrase if mentioned, otherwise null.
 6. MATCH THE LANGUAGE: You MUST write the "title", "description", and "raw_time" using the exact same language and tone as the user's input (e.g., if the user uses informal Indonesian slang, write the output in informal Indonesian).
-7. NO DUPLICATES: If the user describes a single task, feeling, or situation using multiple phrases in one sentence, extract it as ONLY ONE task. DO NOT split a single thought into multiple array items.
+7. SEPARATE DISTINCT TASKS: If the user mentions multiple DIFFERENT tasks (e.g., "tugas RPL" and "laprak termo"), you MUST extract them as SEPARATE items in the array. 
+8. NO DUPLICATES: Only merge phrases if they describe the EXACT SAME task.
+
+INTENT SELECTION LOGIC:
+- "overload": Choose this if the user emphasizes the QUANTITY or VOLUME of tasks (e.g., "tugas numpuk", "banyak banget"). The root cause is having too much to do.
+- "stress": Choose this if the user emphasizes their EMOTIONAL STATE or CONFUSION (e.g., "pusing mikirin kating", "cape banget", "ga sanggup") WITHOUT a clear, actionable list of tasks.
+- IF BOTH ARE PRESENT: Prioritize "overload" if there are specific tasks that can be scheduled. Prioritize "stress" if it's mostly an emotional rant.
 
 DESCRIPTION RULE (CRITICAL):
 For the "description" field, do not just summarize the task. You must explicitly describe:

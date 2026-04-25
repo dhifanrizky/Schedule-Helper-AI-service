@@ -1,3 +1,4 @@
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langchain_groq import ChatGroq
 from app.config import settings
@@ -20,6 +21,16 @@ def get_llm(provider: str, model: str, temperature: float = 0.0, **kwargs):
             raise ValueError("GROQ_API_KEY tidak ditemukan di .env")
         return ChatGroq(
             api_key=settings.groq_api_key, # type: ignore
+            model=model,
+            temperature=temperature,
+            model_kwargs=kwargs
+        )
+    
+    elif provider == "gemini":
+        if not settings.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY tidak ditemukan di .env")
+        return ChatGoogleGenerativeAI(
+            api_key=settings.gemini_api_key, # type: ignore
             model=model,
             temperature=temperature,
             model_kwargs=kwargs

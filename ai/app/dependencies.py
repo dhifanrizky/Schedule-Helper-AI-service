@@ -1,4 +1,4 @@
-from functools import lru_cache
+import asyncio
 from app.services.llm import get_llm
 from app.services.calendar import get_calendar_client
 from app.services.checkpointer import get_checkpointer
@@ -20,34 +20,50 @@ ROUTER_LLM_PROVIDER = "groq"
 ROUTER_LLM_MODEL = "llama-3.3-70b-versatile"
 ROUTER_LLM_TEMPERATURE = 0.3
 
-@lru_cache
-def get_graph() -> CompiledStateGraph:
+_graph: CompiledStateGraph | None = None
+_graph_lock = asyncio.Lock()
+
+
+def clear_graph_cache() -> None:
+    global _graph
+    _graph = None
+
+async def get_graph() -> CompiledStateGraph:
     """
     Inisialisasi dan compile graph sekali — di-cache selama app hidup.
     Tiap agent di-inject dengan model LLM yang paling optimal untuk tugasnya.
     """
     
-    # 1. Router: Butuh speed & JSON akurat 
-    router_llm = get_llm(
-        provider=ROUTER_LLM_PROVIDER,
-        model=ROUTER_LLM_MODEL,
-        temperature=ROUTER_LLM_TEMPERATURE,
-    )
-    
-    # 2. Counselor: Butuh empati tinggi 
-    counselor_llm = get_llm("openai", "gpt-4o-mini", temperature=0.7)
-    
-    # 3. Prioritizer: Butuh logika urutan mantap 
-    prioritizer_llm = get_llm("openai", "gemini-1.5-flash", temperature=0.2)
-    
-    # 4. Scheduler: Butuh function calling konsisten 
-    scheduler_llm = get_llm("openai", "gpt-4o-mini", temperature=0.0)
+    global _graph
+    if _graph is not None:
+        return _graph
 
-    agents = {
-        "router":      make_router(INTENT_MAP, router_llm),
-        "counselor":   make_counselor(counselor_llm),
-        "prioritizer": make_prioritizer(prioritizer_llm),
-        "scheduler":   make_scheduler(scheduler_llm, get_calendar_client()),
-    }
+    async with _graph_lock:
+        if _graph is not None:
+            return _graph
+
+        # 1. Router: Butuh speed & JSON akurat 
+        router_llm = get_llm(
+            provider=ROUTER_LLM_PROVIDER,
+            model=ROUTER_LLM_MODEL,
+            temperature=ROUTER_LLM_TEMPERATURE,
+        )
     
-    return build_graph(agents, checkpointer=get_checkpointer())
+        # 2. Counselor: Butuh empati tinggi 
+        counselor_llm = get_llm("gemini", "gemini-2.5-flash", temperature=0.7)
+    
+        # 3. Prioritizer: Butuh logika urutan mantap 
+        prioritizer_llm = get_llm("gemini", "gemini-1.5-flash", temperature=0.2)
+    
+        # 4. Scheduler: Butuh function calling konsisten 
+        scheduler_llm = get_llm("gemini", "gemini-2.5-flash", temperature=0.0)
+
+        agents = {
+            "router":      make_router(INTENT_MAP, router_llm),
+            "counselor":   make_counselor(counselor_llm),
+            "prioritizer": make_prioritizer(prioritizer_llm),
+            "scheduler":   make_scheduler(scheduler_llm, get_calendar_client()),
+        }
+
+        _graph = build_graph(agents, checkpointer=await get_checkpointer())
+        return _graph

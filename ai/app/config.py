@@ -7,7 +7,8 @@ class Settings(BaseSettings):
     # API Keys (Bisa diisi mana yang mau dipakai)
     openai_api_key: Optional[str] = None
     groq_api_key: Optional[str] = None
-    
+    gemini_api_key:Optional[str] = None
+
     # Redis
     redis_url: str = "redis://localhost:6379"
 
@@ -18,5 +19,9 @@ class Settings(BaseSettings):
     # App
     app_env: str = "development"
     log_level: str = "INFO"
+
+    @property
+    def is_production(self) -> bool:
+        return self.app_env == "production"
 
 settings = Settings() # type: ignore

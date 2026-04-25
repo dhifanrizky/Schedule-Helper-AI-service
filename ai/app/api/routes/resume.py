@@ -5,6 +5,15 @@ from app.dependencies import get_graph
 router = APIRouter(prefix="/resume", tags=["hitl"])
 
 
+async def _print_step_state(graph, config: dict, thread_id: str, step_update: dict) -> None:
+    state = await graph.aget_state(config)
+    node = next(iter(step_update.keys()), "unknown") if isinstance(step_update, dict) else "unknown"
+    print(
+        f"[graph-step][resume][thread_id={thread_id}] "
+        f"node={node} next={list(state.next)} values={state.values}"
+    )
+
+
 @router.post("/{thread_id}", response_model=ResumeResponse)
 async def resume(thread_id: str, body: HITLResumeRequest, graph=Depends(get_graph)):
     """
@@ -19,7 +28,7 @@ async def resume(thread_id: str, body: HITLResumeRequest, graph=Depends(get_grap
     config = {"configurable": {"thread_id": thread_id}}
 
     # cek apakah thread ada dan memang sedang interrupt
-    state = graph.get_state(config)
+    state = await graph.aget_state(config)
     if not state.values:
         raise HTTPException(status_code=404, detail=f"Thread {thread_id} tidak ditemukan")
     if not state.next:
@@ -28,14 +37,16 @@ async def resume(thread_id: str, body: HITLResumeRequest, graph=Depends(get_grap
     try:
         # inject approved_data sebagai Command untuk resume interrupt
         from langgraph.types import Command
-        await graph.ainvoke(
+        async for step_update in graph.astream(
             Command(resume=body.approved_data),
             config=config,
-        )
+            stream_mode="updates",
+        ):
+            await _print_step_state(graph, config, thread_id, step_update)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-    new_state = graph.get_state(config)
+    new_state = await graph.aget_state(config)
     is_waiting = bool(new_state.next)
 
     hitl_payload = None

@@ -2,21 +2,22 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import chat, resume, state
-from app.dependencies import get_graph
+from app.dependencies import clear_graph_cache, get_graph
 from app.config import settings
 from app.services.checkpointer import init_checkpointer, close_checkpointer
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_checkpointer()
+    await init_checkpointer()
 
     # warmup graph
-    get_graph()
+    await get_graph()
 
     yield
 
     # cleanup
-    close_checkpointer()
+    clear_graph_cache()
+    await close_checkpointer()
     
 app = FastAPI(
     title="AI Agent App",

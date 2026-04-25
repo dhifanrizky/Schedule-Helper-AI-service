@@ -24,7 +24,7 @@ async def get_thread_state(thread_id: str, graph=Depends(get_graph)):
     Berguna juga untuk restore state UI kalau user refresh halaman.
     """
     config = {"configurable": {"thread_id": thread_id}}
-    state = graph.get_state(config)
+    state = await graph.aget_state(config)
 
     if not state.values:
         raise HTTPException(status_code=404, detail=f"Thread {thread_id} tidak ditemukan")

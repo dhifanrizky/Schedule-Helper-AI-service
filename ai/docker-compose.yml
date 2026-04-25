@@ -4,16 +4,35 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379
     volumes:
       - ./credentials.json:/app/credentials.json:ro
       - ./token.json:/app/token.json
+    # Tambahkan flag --reload untuk Uvicorn
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    
+    # --- Fitur Watch ---
+    develop:
+      watch:
+        # Jika file di folder ./app berubah, langsung copy ke container tanpa rebuild
+        - action: sync
+          path: ./app
+          target: /app/app
+        # Jika pyproject.toml atau uv.lock berubah, otomatis rebuild container
+        - action: rebuild
+          path: pyproject.toml
+        - action: rebuild
+          path: uv.lock
+    # -------------------
+
     depends_on:
       redis:
         condition: service_healthy
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis/redis-stack:latest
     ports:
       - "6379:6379"
     healthcheck:
