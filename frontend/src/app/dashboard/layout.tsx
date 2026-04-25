@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 type UserProfile = {
   name: string;
@@ -22,7 +22,13 @@ export default function DashboardLayout({
   const [isUserLoading, setIsUserLoading] = useState(true);
   const [hasMessages, setHasMessages] = useState(false);
 
-  // Fetch User Simulation (Persisted across dashboard pages)
+  // === INTEGRASI BE: AMBIL DATA USER YANG SEDANG LOGIN ===
+  // [PENJELASAN]: Ganti simulasi di bawah dengan GET request ke endpoint profil.
+  // [METHOD]: GET | [ENDPOINT]: /api/users/me
+  // [HEADERS]: Authorization: Bearer <token>
+  // [RESPONSE]: { id, name, email, createdAt }
+  // [CATATAN]: sessionStorage digunakan sebagai cache sementara.
+  // Sync dengan database diperlukan saat token expired atau user refresh halaman.
   useEffect(() => {
     const fetchUser = async () => {
       try {
@@ -48,17 +54,22 @@ export default function DashboardLayout({
     fetchUser();
   }, []);
 
+  // === INTEGRASI BE: SINKRONISASI SESSION CHAT ===
+  // [PENJELASAN]: chat_messages di sessionStorage bersifat sementara (hilang jika tab ditutup).
+  // Untuk persistensi permanen, simpan ke database saat user logout atau selesai sesi.
+  // [METHOD]: POST | [ENDPOINT]: /api/sessions/save
+  // [BODY]: { userId: string, messages: Message[] }
   // Listen to chat message changes for showing/hiding sidebar
   useEffect(() => {
     const checkMessages = () => {
       const msgs = sessionStorage.getItem("chat_messages");
       setHasMessages(msgs ? JSON.parse(msgs).length > 0 : false);
     };
-    
+
     checkMessages();
     window.addEventListener("storage", checkMessages);
     window.addEventListener("chat_updated", checkMessages);
-    
+
     return () => {
       window.removeEventListener("storage", checkMessages);
       window.removeEventListener("chat_updated", checkMessages);
@@ -75,17 +86,31 @@ export default function DashboardLayout({
   const isHistoryActive = pathname === "/dashboard/history";
 
   return (
-    <div className={isDashboardStart ? "" : "flex h-screen bg-[#FDFDFD] transition-all duration-500 ease-in-out overflow-hidden"}>
+    <div
+      className={
+        isDashboardStart
+          ? ""
+          : "flex h-screen bg-[#FDFDFD] transition-all duration-500 ease-in-out overflow-hidden"
+      }
+    >
       {/* 3. Global Sidebar Component */}
       {!isDashboardStart && (
         <aside className="w-[260px] sm:w-[280px] h-full border-r border-gray-100 flex flex-col flex-shrink-0 bg-white z-10">
           <div className="p-6 pb-8 border-b border-gray-100">
-            <h1 className="text-[20px] font-bold text-[#0A0A0A]">
+            <Link 
+              href="/" 
+              onClick={() => {
+                // === INTEGRASI BACKEND: NAVIGASI KE LANDING PAGE ===
+                // Pastikan fungsi ini membersihkan sessionStorage sebelum dialihkan ke '/'
+                sessionStorage.removeItem("chat_messages");
+              }}
+              className="text-[20px] font-bold text-[#0A0A0A] cursor-pointer no-underline block"
+            >
               Schedule Helper
-            </h1>
+            </Link>
           </div>
 
-          <nav className="flex-1 px-4 py-6 space-y-2">
+          <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
             <Link
               href="/dashboard"
               className={`flex items-center gap-3 px-4 py-3.5 rounded-xl font-medium transition-colors cursor-pointer ${
@@ -95,7 +120,7 @@ export default function DashboardLayout({
               }`}
             >
               <img
-                src="/images%20dashboard/Dashboard.webp"
+                src="/images-dashboard/Dashboard.webp"
                 alt="Dashboard"
                 className={`w-5 h-5 object-contain ${
                   isDashboardActive ? "filter brightness-0 invert" : ""
@@ -112,7 +137,7 @@ export default function DashboardLayout({
               }`}
             >
               <img
-                src="/images%20dashboard/History.webp"
+                src="/images-dashboard/History.webp"
                 alt="History"
                 className={`w-5 h-5 object-contain ${
                   isHistoryActive ? "filter brightness-0 invert" : ""
@@ -129,10 +154,12 @@ export default function DashboardLayout({
               }`}
             >
               <img
-                src="/images%20dashboard/Profile.webp"
+                src="/images-dashboard/Profile.webp"
                 alt="Profile"
                 className={`w-5 h-5 object-contain ${
-                  pathname === "/dashboard/profile" ? "filter brightness-0 invert" : ""
+                  pathname === "/dashboard/profile"
+                    ? "filter brightness-0 invert"
+                    : ""
                 }`}
               />
               Profile
@@ -140,8 +167,8 @@ export default function DashboardLayout({
           </nav>
 
           {/* Dynamic User Profile Section */}
-          <div className="p-4 border-t border-gray-100">
-            <div 
+          <div className="p-4 border-t border-gray-100 mt-auto">
+            <div
               onClick={() => router.push("/dashboard/profile")}
               className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
             >
@@ -171,14 +198,19 @@ export default function DashboardLayout({
             </div>
             <button
               onClick={() => {
-                // Reset logic 
+                // === INTEGRASI BE: PROSES LOGOUT ===
+                // [PENJELASAN]: Hapus token autentikasi dan bersihkan session.
+                // [METHOD]: POST | [ENDPOINT]: /api/auth/logout
+                // [HEADERS]: Authorization: Bearer <token>
+                // [AKSI]: Hapus token dari Cookie/localStorage, bersihkan sessionStorage, redirect ke '/'
                 sessionStorage.removeItem("chat_messages");
+                sessionStorage.removeItem("app_user");
                 router.push("/");
               }}
               className="flex items-center gap-3 mt-4 px-3 text-[14px] text-gray-500 hover:text-gray-900 font-medium w-full text-left transition-colors"
             >
               <img
-                src="/images%20dashboard/Logout.webp"
+                src="/images-dashboard/Logout.webp"
                 alt="Logout"
                 className="w-[18px] h-[18px] object-contain opacity-80"
               />

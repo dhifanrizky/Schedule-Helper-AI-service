@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import Link from "next/link";
 import Image from "next/image";
+import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 
 type Message = {
   role: "ai" | "user";
@@ -50,7 +50,7 @@ export default function DemoPage() {
         const data = await res.json();
       */
 
-      // Simulasi backend response & delay 
+      // Simulasi backend response & delay
       await new Promise((resolve) => setTimeout(resolve, 1000));
       // Simulasi backend mengecek limit:
       const simulatedCount = userMessageCount + 1;
@@ -105,7 +105,7 @@ export default function DemoPage() {
           className="flex items-center gap-2 text-gray-500 hover:text-gray-800 transition-colors text-[15px] font-medium"
         >
           <img
-            src="/images%20button/Icon%20Back%20To%20Home.webp"
+            src="/images-button/Icon%20Back%20To%20Home.webp"
             alt="Back to Home"
             className="w-5 h-5 object-contain"
           />
@@ -113,7 +113,9 @@ export default function DemoPage() {
         </Link>
 
         <div className="flex items-center gap-3">
-          <span className="text-gray-500 text-[15px] font-medium">Demo Mode</span>
+          <span className="text-gray-500 text-[15px] font-medium">
+            Demo Mode
+          </span>
           <div className="bg-[#D3C1FF] text-[#8A38F5] px-3 py-1 rounded-full text-[14px] font-semibold">
             {userMessageCount}/3 messages
           </div>
@@ -126,14 +128,16 @@ export default function DemoPage() {
           {messages.map((msg, idx) => (
             <div
               key={idx}
-              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"
-                }`}
+              className={`flex ${
+                msg.role === "user" ? "justify-end" : "justify-start"
+              }`}
             >
               <div
-                className={`max-w-[80%] sm:max-w-[70%] px-5 py-3.5 rounded-[20px] text-[15px] leading-relaxed shadow-sm ${msg.role === "user"
+                className={`max-w-[80%] sm:max-w-[70%] px-5 py-3.5 rounded-[20px] text-[15px] leading-relaxed shadow-sm ${
+                  msg.role === "user"
                     ? "bg-[#B597FF] text-white rounded-br-sm"
                     : "bg-white text-gray-800 border border-gray-100 rounded-bl-sm"
-                  }`}
+                }`}
               >
                 {/* React mengamankan string dengan sendirinya, tidak membutuhkan dangerouslySetInnerHTML */}
                 {msg.content}
@@ -159,7 +163,7 @@ export default function DemoPage() {
         {isLimitReached ? (
           <div className="bg-[#030213]/5 border border-[#030213]/20 rounded-[14px] w-full max-w-[979px] h-[209px] flex flex-col items-center justify-center text-center">
             <img
-              src="/images%20homepage/AI%20Clarifies%20&%20Prioritizes.webp"
+              src="/images-homepage/AI%20Clarifies%20&%20Prioritizes.webp"
               alt="AI Icon"
               className="w-8 h-8 mb-3 object-contain"
             />
@@ -167,7 +171,8 @@ export default function DemoPage() {
               Demo Limit Reached
             </h3>
             <p className="text-[#717182] text-[15px] mb-5">
-              Unlock unlimited conversations and full AI-powered scheduling by signing up.
+              Unlock unlimited conversations and full AI-powered scheduling by
+              signing up.
             </p>
             <Link
               href="/auth/register"
@@ -194,7 +199,7 @@ export default function DemoPage() {
                 className="shrink-0 rounded-full hover:scale-105 transition-transform disabled:opacity-50 disabled:hover:scale-100 cursor-pointer"
               >
                 <img
-                  src="/images%20button/Send%20Button.webp"
+                  src="/images-button/Send%20Button.webp"
                   alt="Send"
                   className="w-12 h-12 object-contain"
                 />

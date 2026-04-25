@@ -1,34 +1,71 @@
 "use client";
 
-import Link from 'next/link';
-import React, { useState } from 'react';
-import { Inter } from 'next/font/google';
+import { Inter } from "next/font/google";
+import Link from "next/link";
+import type React from "react";
+import { useState } from "react";
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ["latin"] });
 
 const MailIcon = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <rect width="20" height="16" x="2" y="4" rx="2"></rect>
     <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path>
   </svg>
 );
 
 const LockIcon = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
     <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
   </svg>
 );
 
 const ArrowLeftIcon = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <path d="m12 19-7-7 7-7"></path>
     <path d="M19 12H5"></path>
   </svg>
 );
 
 const InfoIcon = ({ className }: { className?: string }) => (
-  <svg className={className} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+  <svg
+    className={className}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
     <circle cx="12" cy="12" r="10"></circle>
     <path d="M12 16v-4"></path>
     <path d="M12 8h.01"></path>
@@ -49,9 +86,14 @@ export default function LoginPage() {
       setEmailError("An email address must contain a single @");
       return;
     }
-    const domainPart = val.split('@')[1];
-    if (!domainPart.includes('.') || domainPart.split('.').pop()?.trim() === '') {
-      setEmailError("Please ensure the email address ends with a valid domain (e.g. .com).");
+    const domainPart = val.split("@")[1];
+    if (
+      !domainPart.includes(".") ||
+      domainPart.split(".").pop()?.trim() === ""
+    ) {
+      setEmailError(
+        "Please ensure the email address ends with a valid domain (e.g. .com).",
+      );
       return;
     }
     setEmailError("");
@@ -68,7 +110,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className={`min-h-screen bg-[#fafafa] flex flex-col justify-center py-12 sm:px-6 lg:px-8 ${inter.className}`}>
+    <div
+      className={`min-h-screen bg-[#fafafa] flex flex-col justify-center py-12 sm:px-6 lg:px-8 ${inter.className}`}
+    >
       <div className="sm:mx-auto sm:w-full sm:max-w-[440px]">
         <Link
           href="/"
@@ -88,9 +132,19 @@ export default function LoginPage() {
             </p>
           </div>
 
+          {/* === INTEGRASI BE: SUBMIT FORM LOGIN === */}
+          {/* [PENJELASAN]: Saat form disubmit, kirim email & password ke API autentikasi. */}
+          {/* [METHOD]: POST | [ENDPOINT]: /api/auth/login */}
+          {/* [BODY]: { email: string, password: string } */}
+          {/* [RESPONSE]: { token: string, user: { id, name, email } } */}
+          {/* [AKSI SETELAH SUKSES]: Simpan token ke Cookie/localStorage, redirect ke /dashboard */}
+          {/* [AKSI JIKA GAGAL]: Tampilkan pesan error "Email atau password salah" */}
           <form className="space-y-5" action="#" method="POST">
             <div>
-              <label htmlFor="email" className="block text-[16px] font-medium text-[#0A0A0A]">
+              <label
+                htmlFor="email"
+                className="block text-[16px] font-medium text-[#0A0A0A]"
+              >
                 Email
               </label>
               <div className="relative mt-2">
@@ -106,7 +160,7 @@ export default function LoginPage() {
                   value={email}
                   onChange={handleEmailChange}
                   onBlur={handleEmailBlur}
-                  className={`block w-full rounded-xl border-0 py-3.5 pl-11 text-[16px] text-[#0A0A0A] ring-1 ring-inset ${emailError ? 'ring-red-400 focus:ring-red-500 bg-red-50' : 'ring-gray-200 focus:ring-[#8A38F5]'} placeholder:text-[#717182] focus:ring-2 focus:ring-inset transition-all`}
+                  className={`block w-full rounded-xl border-0 py-3.5 pl-11 text-[16px] text-[#0A0A0A] ring-1 ring-inset ${emailError ? "ring-red-400 focus:ring-red-500 bg-red-50" : "ring-gray-200 focus:ring-[#8A38F5]"} placeholder:text-[#717182] focus:ring-2 focus:ring-inset transition-all`}
                   placeholder="you@example.com"
                 />
               </div>
@@ -119,7 +173,10 @@ export default function LoginPage() {
             </div>
 
             <div>
-              <label htmlFor="password" className="block text-[16px] font-medium text-[#0A0A0A]">
+              <label
+                htmlFor="password"
+                className="block text-[16px] font-medium text-[#0A0A0A]"
+              >
                 Password
               </label>
               <div className="relative mt-2">
@@ -139,6 +196,10 @@ export default function LoginPage() {
             </div>
 
             <div className="pt-3">
+              {/* === INTEGRASI BE: TOMBOL SUBMIT LOGIN === */}
+              {/* [PENJELASAN]: Ganti action form ke onSubmit handler async. */}
+              {/* Setelah menerima token: localStorage.setItem("auth_token", token) */}
+              {/* DIREKOMENDASIKAN: Gunakan HttpOnly Cookie via Set-Cookie dari server */}
               <button
                 type="submit"
                 className="flex w-full justify-center rounded-xl bg-[#8A38F5] px-3 py-3.5 text-[16px] font-semibold text-[#FFFFFF] shadow-sm hover:bg-[#7b32db] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#8A38F5] transition-all"
@@ -149,7 +210,7 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-8 text-center text-[16px] text-[#717182]">
-            Don't have an account?{' '}
+            Don't have an account?{" "}
             <Link
               href="/auth/register"
               className="font-semibold text-[#030213] hover:text-[#8A38F5] transition-colors"
