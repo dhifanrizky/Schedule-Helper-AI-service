@@ -2,17 +2,21 @@
 
 import { Fragment, useEffect, useState } from "react";
 
+// Tipe data untuk satu item riwayat jadwal
+// === INTEGRASI BE: Sesuaikan field ini dengan schema response dari /api/schedules/history ===
 type HistoryItem = {
-  id: string;
-  title: string;
-  date: string;
-  priorities: number;
-  quickWins: number;
-  status: string;
+  id: string;         // ID unik jadwal untuk keperluan routing ke detail
+  title: string;      // Judul sesi (biasanya ringkasan dari chat user)
+  date: string;       // Tanggal dibuat, format string (format dari backend perlu disesuaikan)
+  priorities: number; // Jumlah tugas prioritas tinggi
+  quickWins: number;  // Jumlah tugas quick win
+  status: string;     // Status jadwal: 'completed' | 'in_progress' | 'cancelled'
 };
 
 export default function HistoryPage() {
+  // Data riwayat jadwal (null = belum dimuat, [] = kosong, [...] = ada data)
   const [historyData, setHistoryData] = useState<HistoryItem[] | null>(null);
+  // Menandai apakah data masih dalam proses dimuat (menampilkan skeleton loader)
   const [isLoading, setIsLoading] = useState(true);
 
   // === INTEGRASI BE: FETCHING ARRAY RIWAYAT JADWAL ===
@@ -67,6 +71,7 @@ export default function HistoryPage() {
 
   return (
     <main className="flex-1 flex flex-col h-full bg-[#FFFFFF]">
+      {/* Judul halaman dan deskripsi singkat */}
       {/* Header */}
       <div className="px-8 pt-10 pb-6 border-b border-transparent shrink-0">
         <h1 className="text-[26px] font-semibold text-[#0A0A0A] mb-1">
@@ -77,10 +82,10 @@ export default function HistoryPage() {
         </p>
       </div>
 
-      {/* 4. Scrollable List with Security optional chaining */}
+      {/* Area konten utama yang bisa di-scroll secara vertikal */}
       <div className="flex-1 overflow-y-auto px-8 pb-10">
         <div className="max-w-4xl flex flex-col gap-4">
-          {/* Loading State (Skeleton) */}
+          {/* Skeleton Loader: Muncul saat data sedang dimuat dari API */}
           {isLoading && (
             <>
               {[1, 2, 3].map((skeleton) => (
@@ -99,7 +104,7 @@ export default function HistoryPage() {
             </>
           )}
 
-          {/* Empty State */}
+          {/* Tampilan kosong: Muncul jika API mengembalikan array kosong ([]) */}
           {!isLoading && historyData?.length === 0 && (
             <div className="flex flex-col items-center justify-center text-center mt-20 p-10 border border-dashed border-gray-200 rounded-[16px] bg-gray-50">
               <svg
@@ -121,7 +126,7 @@ export default function HistoryPage() {
             </div>
           )}
 
-          {/* 2. Populated Data State (Cards) */}
+          {/* Tampilan kartu riwayat: Di-render setelah data berhasil dimuat dari API */}
           {!isLoading &&
             historyData &&
             historyData.length > 0 &&

@@ -3,33 +3,50 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
+// Tipe data untuk setiap pesan dalam percakapan antara user dan AI
 type Message = {
   role: "user" | "ai";
   content: string;
 };
 
+// Tipe data profil pengguna yang diambil dari backend
 type UserProfile = {
   name: string;
   email: string;
 };
 
 export default function DashboardPage() {
+  // --- STATE UTAMA ---
+  // Menandai apakah user sudah memulai percakapan (mengubah tampilan dari Start State ke Chat State)
   const [isStarted, setIsStarted] = useState(false);
+  // Array berisi semua pesan percakapan antara user dan AI
   const [messages, setMessages] = useState<Message[]>([]);
+  // Nilai teks yang sedang diketik user di input form
   const [inputValue, setInputValue] = useState("");
+  // Menandai apakah AI sedang memproses respons (mencegah kiriman ganda)
   const [isTyping, setIsTyping] = useState(false);
+  // Ref untuk auto-scroll ke pesan terbaru di bawah area chat
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Questionnaire States
+  // Nilai tingkat energi user (1=rendah, 2=sedang, 3=tinggi)
   const [energyLevel, setEnergyLevel] = useState<number>(2);
+  // Nilai suasana hati user (1=happy, 2=netral, 3=stres)
   const [mood, setMood] = useState<number>(2);
+  // Waktu tersedia user yang dipilih dari dropdown
   const [availableTime, setAvailableTime] = useState<string>("");
+  // Menandai apakah dropdown pilihan waktu sedang terbuka
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
   // Analyzing State
+  // Menandai apakah AI sedang menganalisis jadwal (menampilkan layar loading)
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  // Menandai apakah jadwal hasil analisis sudah siap ditampilkan
   const [isResult, setIsResult] = useState(false);
+  // Menandai apakah mode edit jadwal harian sedang aktif
   const [isEditingSchedule, setIsEditingSchedule] = useState(false);
+  // Data jadwal harian yang bisa diedit oleh user
+  // === INTEGRASI BE: Data ini akan diganti dengan response dari /api/schedules/generate ===
   const [scheduleItems, setScheduleItems] = useState([
     { time: "9:00 - 9:25", title: "Quick Wins Session" },
     { time: "9:30 - 10:15", title: "Review client feedback" },
@@ -39,7 +56,9 @@ export default function DashboardPage() {
     { time: "1:30 - 2:30", title: "Team meeting preparation" },
   ]);
 
-  // 1. Persistensi Chat menggunakan SessionStorage
+  // [Efek 1] Memuat ulang riwayat chat dari sessionStorage saat halaman pertama kali dibuka.
+  // Jika ada riwayat tersimpan, langsung tampilkan Chat State (skip Start State).
+  // === INTEGRASI BE: Kedepannya bisa diganti dengan fetch history dari /api/sessions/:userId ===
   useEffect(() => {
     // Muat pesan saat awal mount
     const savedMessages = sessionStorage.getItem("chat_messages");
@@ -52,6 +71,8 @@ export default function DashboardPage() {
     }
   }, []);
 
+  // [Efek 2] Menyimpan seluruh riwayat chat ke sessionStorage setiap kali ada pesan baru.
+  // Juga mengirim event 'chat_updated' agar layout.tsx tahu ada aktivitas chat (untuk menampilkan sidebar).
   useEffect(() => {
     // Simpan pesan setiap kali ada perubahan, dan dispatch event
     if (messages.length > 0) {
@@ -87,6 +108,7 @@ export default function DashboardPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // [Efek 3] Auto-scroll ke pesan terbawah setiap kali ada pesan baru atau AI sedang mengetik.
   useEffect(() => {
     if (isStarted) {
       scrollToBottom();
@@ -151,6 +173,7 @@ export default function DashboardPage() {
     }
   };
 
+  // Mengambil huruf pertama nama user untuk ditampilkan sebagai avatar inisial
   const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : "";
 
   // === INTEGRASI BE: KIRIM DATA KUESIONER & TERIMA HASIL JADWAL ===
@@ -241,7 +264,9 @@ export default function DashboardPage() {
     );
   }
 
-  // 2. Analyzing State
+  // === TAMPILAN 2: ANALYZING STATE ===
+  // Muncul setelah user menekan "Generate My Schedule".
+  // Menampilkan animasi loading sementara AI memproses jadwal.
   if (isAnalyzing) {
     return (
       <main className="flex-1 flex flex-col items-center justify-center h-full bg-[#FFFFFF] animate-in fade-in duration-500">
@@ -262,7 +287,13 @@ export default function DashboardPage() {
     );
   }
 
-  // 3. Result State
+  // === TAMPILAN 3: RESULT STATE ===
+  // Muncul setelah AI selesai menganalisis. Menampilkan:
+  // - Top Priorities: tugas utama yang harus diselesaikan
+  // - Quick Wins: tugas ringan yang bisa cepat diselesaikan
+  // - Today's Schedule: timeline jadwal harian yang bisa diedit
+  // - AI Reasoning: penjelasan logika AI dalam menyusun jadwal
+  // - Action Buttons: Approve, Edit Plan, Regenerate
   if (isResult) {
     return (
       <main className="flex-1 flex flex-col h-full bg-[#FFFFFF] overflow-y-auto">
@@ -276,6 +307,9 @@ export default function DashboardPage() {
 
           <div className="w-full max-w-3xl flex flex-col gap-6">
 
+            {/* === INTEGRASI BE: DATA TOP PRIORITIES ===
+                Ganti konten hard-coded di bawah dengan data dari response /api/schedules/generate
+                Field yang dipetakan: topPriorities[].title, .urgency, .reason, .duration */}
             {/* Top Priorities */}
             <div className="bg-white border border-[#E5E7EB] rounded-[16px] p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-6">
@@ -318,6 +352,9 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* === INTEGRASI BE: DATA QUICK WINS ===
+                Ganti array hard-coded dengan response quickWins[] dari /api/schedules/generate
+                Field: quickWins[].title, quickWins[].time */}
             {/* Quick Wins */}
             <div className="bg-white border border-[#E5E7EB] rounded-[16px] p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-6">
@@ -350,6 +387,9 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* === INTEGRASI BE: DATA TIMELINE JADWAL HARIAN ===
+                scheduleItems di-populate dari response timeline[] API.
+                Saat user menekan Save Edits, perubahan dikirim ke PATCH /api/schedules/:id */}
             {/* Today's Schedule */}
             <div className="bg-white border border-[#E5E7EB] rounded-[16px] p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-6">
@@ -398,6 +438,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* === INTEGRASI BE: AI REASONING ===
+                Teks di bawah ini akan diganti dengan field 'reasoning' dari response API.  */}
             {/* AI Reasoning */}
             <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-[16px] p-6 shadow-sm">
               <div className="flex items-center gap-3 mb-4">
@@ -446,7 +488,13 @@ export default function DashboardPage() {
     );
   }
 
-  // 4. Active Chat State (Sidebar dikendalikan oleh layout.tsx)
+  // === TAMPILAN 4: ACTIVE CHAT STATE ===
+  // Tampilan utama percakapan. Sidebar dikendalikan oleh layout.tsx.
+  // Berisi:
+  // - Area pesan (gelembung chat user & AI)
+  // - Form kuesioner (muncul setelah trigger pesan AI tertentu)
+  // - Animasi typing indicator saat AI sedang merespons
+  // - Input form di bagian bawah untuk mengirim pesan
   return (
     <main className="flex-1 flex flex-col h-full bg-[#FFFFFF]">
       {/* Messages Area */}
@@ -474,6 +522,8 @@ export default function DashboardPage() {
               </div>
 
               {/* Form Card Questionnaire Trigger */}
+              {/* Kuesioner muncul secara otomatis hanya ketika pesan AI terakhir
+                  berisi kalimat trigger tertentu. Ini menghindari penggunaan flag boolean terpisah. */}
               {index === messages.length - 1 &&
                 msg.role === "ai" &&
                 msg.content ===
@@ -483,6 +533,7 @@ export default function DashboardPage() {
                       How are you feeling right now?
                     </h3>
 
+                    {/* Slider Tingkat Energi: Nilai 1-3, dikonversi ke warna gradient secara dinamis */}
                     {/* Energy Level */}
                     <div className="mb-10">
                       <label className="text-[14px] text-[#717182] font-medium block mb-4 font-inter">
@@ -515,6 +566,7 @@ export default function DashboardPage() {
                       />
                     </div>
 
+                    {/* Slider Mood: Nilai 1-3 (1=happy, 2=netral, 3=stres) */}
                     {/* Mood */}
                     <div className="mb-10">
                       <label className="text-[14px] text-[#717182] font-medium block mb-4 font-inter">
@@ -547,6 +599,7 @@ export default function DashboardPage() {
                       />
                     </div>
 
+                    {/* Dropdown pilihan waktu tersedia (4 opsi). Menggunakan state isDropdownOpen. */}
                     {/* Available Time Today */}
                     <div className="mb-8 relative">
                       <label className="text-[14px] text-[#717182] font-medium block mb-3 font-inter">
@@ -625,6 +678,7 @@ export default function DashboardPage() {
                 )}
             </div>
           ))}
+          {/* Indikator AI sedang mengetik (3 titik bouncing). Muncul saat isTyping = true */}
           {isTyping && (
             <div className="flex justify-start animate-in fade-in">
               <div className="w-8 h-8 rounded-full bg-[#8A38F5] shrink-0 mr-4 flex items-center justify-center shadow-sm">
@@ -641,7 +695,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Input Area (Bottom Fixed with Border Top) */}
+      {/* Area Input Bawah: Form pengiriman pesan yang selalu terlihat di bagian bawah layar */}
+      {/* === INTEGRASI BE: KIRIM PESAN INI KE /api/chat/send VIA handleSend === */}
       <div className="w-full bg-[#FFFFFF] border-t border-gray-100 p-6 shrink-0 flex justify-center">
         <form
           onSubmit={handleSend}

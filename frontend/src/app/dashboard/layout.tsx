@@ -18,8 +18,12 @@ export default function DashboardLayout({
   const router = useRouter();
 
   // Dynamic User Profile state
+  // --- STATE LAYOUT GLOBAL ---
+  // Data profil user yang dibagikan ke semua halaman di dalam dashboard (persisten via sessionStorage)
   const [user, setUser] = useState<UserProfile | null>(null);
+  // Menandai apakah data user masih dalam proses dimuat
   const [isUserLoading, setIsUserLoading] = useState(true);
+  // Menandai apakah ada pesan chat aktif (untuk memutuskan apakah sidebar ditampilkan)
   const [hasMessages, setHasMessages] = useState(false);
 
   // === INTEGRASI BE: AMBIL DATA USER YANG SEDANG LOGIN ===
@@ -59,7 +63,9 @@ export default function DashboardLayout({
   // Untuk persistensi permanen, simpan ke database saat user logout atau selesai sesi.
   // [METHOD]: POST | [ENDPOINT]: /api/sessions/save
   // [BODY]: { userId: string, messages: Message[] }
-  // Listen to chat message changes for showing/hiding sidebar
+  // [Efek 2] Mendengarkan perubahan pada chat_messages di sessionStorage.
+  // Digunakan untuk memutuskan kapan sidebar harus muncul (saat user sudah mulai chat).
+  // Event 'chat_updated' dikirim dari dashboard/page.tsx setiap ada pesan baru.
   useEffect(() => {
     const checkMessages = () => {
       const msgs = sessionStorage.getItem("chat_messages");
@@ -76,12 +82,14 @@ export default function DashboardLayout({
     };
   }, []);
 
+  // Mengambil huruf pertama nama user untuk avatar inisial di sidebar dan header
   const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : "";
 
-  // The sidebar should only be hidden on the /dashboard route IF there are no messages (Start State)
+  // Sidebar disembunyikan hanya pada halaman /dashboard JIKA belum ada chat aktif
+  // Ini adalah logika untuk menampilkan Start State vs Chat State
   const isDashboardStart = pathname === "/dashboard" && !hasMessages;
 
-  // Active state logic
+  // Penanda untuk menentukan tautan navigasi mana yang sedang aktif (highlight ungu)
   const isDashboardActive = pathname === "/dashboard";
   const isHistoryActive = pathname === "/dashboard/history";
 
@@ -166,7 +174,8 @@ export default function DashboardLayout({
             </Link>
           </nav>
 
-          {/* Dynamic User Profile Section */}
+          {/* Bagian profil user + tombol logout yang selalu di bawah sidebar (sticky) */}
+          {/* Menggunakan mt-auto agar selalu menempel ke bagian bawah sidebar meski konten nav pendek */}
           <div className="p-4 border-t border-gray-100 mt-auto">
             <div
               onClick={() => router.push("/dashboard/profile")}

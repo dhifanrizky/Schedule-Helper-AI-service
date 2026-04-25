@@ -3,9 +3,12 @@
 import { useEffect, useState } from "react";
 
 export default function ProfilePage() {
+  // Data profil user yang ditampilkan di halaman ini
+  // Diambil dari sessionStorage (disimpan oleh layout.tsx setelah fetch)
   const [user, setUser] = useState<{ name: string; email: string } | null>(
     null,
   );
+  // Menandai apakah data user masih dalam proses dimuat (menampilkan skeleton)
   const [isLoading, setIsLoading] = useState(true);
 
   // === INTEGRASI BE: AMBIL DATA PROFIL PENGGUNA ===
@@ -57,7 +60,7 @@ export default function ProfilePage() {
 
         {/* Profile Card Container */}
         <div className="border border-[#E5E7EB] rounded-[24px] p-8 bg-white flex flex-col gap-8 shadow-[0_2px_10px_rgb(0,0,0,0.02)]">
-          {/* Profile Header */}
+          {/* Avatar inisial user: Mengambil huruf pertama dari nama user */}
           <div className="flex items-center gap-5">
             <div className="w-[72px] h-[72px] rounded-full bg-[#030213] flex items-center justify-center shrink-0">
               <span className="text-white text-[28px] font-normal">
@@ -83,7 +86,8 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Information Fields */}
+          {/* Daftar field informasi profil: Name, Email, Member Since */}
+          {/* === INTEGRASI BE: Field ini akan diisi dari response GET /api/users/me */}
           <div className="flex flex-col gap-4">
             {/* Name Field */}
             <div className="border border-[#E5E7EB] rounded-[12px] p-5 flex flex-col gap-1.5">
