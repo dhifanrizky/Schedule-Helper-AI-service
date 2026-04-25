@@ -40,8 +40,19 @@ def make_prioritizer(llm):
             "proposed_schedule": proposed_schedule,
         }) or {}
 
+        approved = bool(hitl_result.get("approved"))
         final_tasks = hitl_result.get("tasks") or task_breakdown
         final_schedule = hitl_result.get("proposed_schedule") or proposed_schedule
+
+        if not approved:
+            return {
+                **ai_msg("Baik, rekomendasi belum disetujui. Kamu bisa adjust lagi sebelum dijadwalkan."),
+                "task_breakdown": final_tasks,
+                "proposed_schedule": final_schedule,
+                "error_message": None,
+                "hitl_status": "rejected",
+                "hitl_input": hitl_result,
+            }
 
         return {
             **ai_msg(f"Siap, {len(final_tasks)} tugas akan dijadwalkan."),
@@ -82,15 +93,15 @@ def detect_category(task: str) -> str: #ini aku ubah ya categorynya jadi bisa di
     text = task.lower()
 
     if any(k in text for k in ["kuliah", "kelas", "materi", "belajar", "dokumentasi", "langgraph"]):
-        return "kuliah"
+        return "serius"
 
     if any(k in text for k in ["istirahat", "break", "main game", "main", "rebahan"]):
-        return "istirahat"
+        return "santai"
 
     if any(k in text for k in ["meeting", "organisasi", "rapat"]):
         return "lainnya"
 
-    return "tugas"
+    return "biasa"
 
 
 def estimate_duration(task: str) -> int:
