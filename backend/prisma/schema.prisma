@@ -1,9 +1,7 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
+// This is your Prisma schema file
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
@@ -11,56 +9,74 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
+  id        String   @id @default(uuid()) // Ubah ke UUID agar aman & sinkron dengan user_id di AI
   email     String   @unique
   hash      String
   name      String?
   createdAt DateTime @default(now())
 
   sessions Session[]
+  tasks    Task[] // User punya akses langsung ke task-nya
 
   @@map("users")
 }
 
 model Session {
-  id           Int      @id @default(autoincrement())
-  userId       Int
-  scenarioType String?
-  status       String   @default("active")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id     String @id @default(uuid()) // Gunakan UUID, ini akan sama dengan `thread_id` di LangGraph
+  userId String
 
-  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  inputs          Input[]
-  recommendations FinalRecommendation[]
+  // Simpan state penting dari Router
+  latestIntent String? // "stress", "overload", "manage_task", "schedule"
+
+  // Status conversation (dari LangGraph)
+  status String @default("active") // active, waiting_hitl, done
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages Message[] // Ganti nama 'Input' jadi 'Message' biar mencakup input user & balasan AI
 
   @@map("sessions")
 }
 
-model Input {
-  id         Int      @id @default(autoincrement())
-  sessionId  Int
-  sourceType String?
-  content    String
-  fileUrl    String?
-  createdAt  DateTime @default(now())
+model Message {
+  id        Int    @id @default(autoincrement())
+  sessionId String
 
-  session         Session              @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  recommendations FinalRecommendation[]
+  role    String // "user" atau "ai" atau "counselor"
+  content String @db.Text
 
-  @@map("inputs")
-}
-
-model FinalRecommendation {
-  id        Int      @id @default(autoincrement())
-  sessionId Int
-  inputId   Int
-  summary   String
-  reasoning String?
   createdAt DateTime @default(now())
 
   session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  input   Input   @relation(fields: [inputId], references: [id], onDelete: Cascade)
 
-  @@map("final_recommendations")
+  @@map("messages")
+}
+
+// INI YANG PALING PENTING: Menyimpan hasil ekstraksi Router & Prioritizer
+model Task {
+  id     String @id @default(uuid()) // Samakan dengan task_id dari LangGraph (misal task_001)
+  userId String
+
+  // Dari RawTask (Router)
+  title       String
+  description String  @db.Text
+  category    String // "serius", "santai", dll
+  rawInput    String? @db.Text
+  rawTime     String?
+
+  // Dari TaskBreakdown & ScheduleItem (Prioritizer & Scheduler)
+  estimatedMinutes Int?
+  priority         Int? // 1, 2, 3...
+  deadline         DateTime?
+  startTime        DateTime? // Kapan jadwal ini akan dieksekusi
+  status           String    @default("pending") // pending, scheduled, completed
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("tasks")
 }

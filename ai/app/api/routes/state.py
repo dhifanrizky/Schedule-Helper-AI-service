@@ -35,20 +35,24 @@ async def get_thread_state(thread_id: str, graph=Depends(get_graph)):
             if hasattr(task, "interrupts") and task.interrupts:
                 hitl_payload = task.interrupts[0].value
                 break
+    def unwrap_state(state):
+        return state.values if hasattr(state, "values") else state
+
+    s = unwrap_state(state)
 
     return StateResponse(
         thread_id=thread_id,
         pending_hitl=bool(state.next),
         next_node=list(state.next),
-        current_intent=get_current_intent(state),
-        raw_tasks=get_raw_tasks(state),
-        counselor_response=get_counselor_response(state),
-        counselor_done=get_counselor_done(state),
-        task_breakdown=get_task_breakdown(state),
-        proposed_schedule=get_proposed_schedule(state),
-        api_status=get_api_status(state),
-        api_payload=get_api_payload(state),
-        final_message=get_final_message(state),
-        error_message=get_error_message(state),
+        current_intent=s.get("current_intent"),
+        raw_tasks=s.get("raw_tasks"),
+        counselor_response=s.get("counselor_response"),
+        counselor_done=s.get("counselor_done"),
+        task_breakdown=s.get("task_breakdown"),
+        proposed_schedule=s.get("proposed_schedule"),
+        api_status=s.get("api_status"),
+        api_payload=s.get("api_payload"),
+        final_message=s.get("final_message"),
+        error_message=s.get("error_message"),
         hitl_payload=hitl_payload,
     )

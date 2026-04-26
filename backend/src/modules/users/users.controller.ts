@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  Patch,
-  Body,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Patch, Body, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -27,7 +21,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'Returns the current user' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  getMe(@GetUser('id') userId: number) {
+  getMe(@GetUser('id') userId: string) {
     return this.usersService.getMe(userId);
   }
 
@@ -35,7 +29,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Update current user profile' })
   @ApiResponse({ status: 200, description: 'User updated successfully' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  editUser(@GetUser('id') userId: number, @Body() dto: EditUserDto) {
+  editUser(@GetUser('id') userId: string, @Body() dto: EditUserDto) {
     return this.usersService.editUser(userId, dto);
   }
 }
