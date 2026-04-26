@@ -19,6 +19,7 @@
       }
     ],
     "paths": {
+      "ai/react": ["./src/shims/ai-react.ts"],
       "@/*": ["./src/*"]
     }
   },

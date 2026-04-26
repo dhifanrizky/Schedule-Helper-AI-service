@@ -24,7 +24,7 @@ export default function DashboardPage() {
     isStarted,
     messagesEndRef,
     handleSend
-  } = useChat();
+  } = useChat(user?.email);
 
   // 3. Logika Kuesioner & Pembuatan Jadwal
   const {

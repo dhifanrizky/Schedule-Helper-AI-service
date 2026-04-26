@@ -26,6 +26,7 @@ export function ChatMessage({ message, showAvatar = true }: ChatMessageProps) {
             ? "bg-[#B597FF] text-white rounded-tr-none"
             : "bg-[#FFFFFF] text-[#0A0A0A] border border-[#E5E7EB] rounded-tl-none"
           }`}
+        style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
       >
         {message.content}
       </div>

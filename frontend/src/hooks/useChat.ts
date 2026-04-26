@@ -1,4 +1,6 @@
-import { useState, useEffect, useRef } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
+import { TextStreamChatTransport, type UIMessage } from "ai";
+import { useChat as useAiChat } from "ai/react";
 import { Message } from "@/types";
 import { chatService } from "@/services/chatService";
 
@@ -6,21 +8,47 @@ import { chatService } from "@/services/chatService";
  * Hook untuk mengelola state percakapan chat antara user dan AI.
  * Menangani pengiriman pesan, riwayat, dan auto-scroll.
  */
-export function useChat() {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputValue, setInputValue] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
-  const [isStarted, setIsStarted] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+function mapUiMessageToText(message: UIMessage) {
+  return message.parts
+    .map((part) => (part.type === "text" ? part.text : ""))
+    .join("")
+    .trim();
+}
 
-  // Muat riwayat saat awal mount
-  useEffect(() => {
-    const savedMessages = chatService.getStoredMessages();
-    if (savedMessages.length > 0) {
-      setMessages(savedMessages);
-      setIsStarted(true);
-    }
-  }, []);
+export function useChat(userId?: string) {
+  const [inputValue, setInputValue] = useState("");
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const {
+    messages: uiMessages,
+    sendMessage,
+    setMessages: setUiMessages,
+    status,
+  } = useAiChat({
+    transport: new TextStreamChatTransport({
+      api: "/api/chat/stream",
+      body: () => ({ user_id: userId ?? "anonymous" }),
+    }),
+  });
+
+  const messages = useMemo<Message[]>(() => {
+    return uiMessages
+      .map((message) => {
+        const content = mapUiMessageToText(message);
+
+        if (!content) {
+          return null;
+        }
+
+        return {
+          role: message.role === "user" ? "user" : "ai",
+          content,
+        } satisfies Message;
+      })
+      .filter((message): message is Message => message !== null);
+  }, [uiMessages]);
+
+  const isTyping = status === "submitted" || status === "streaming";
+  const isStarted = messages.length > 0;
 
   // Simpan riwayat setiap ada perubahan
   useEffect(() => {
@@ -33,30 +61,31 @@ export function useChat() {
 
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    
+
     const userText = inputValue.trim();
-    if (!userText || isTyping) return;
+    if (!userText || isTyping) {
+      return;
+    }
 
-    if (!isStarted) setIsStarted(true);
-
-    const newUserMessage: Message = { role: "user", content: userText };
-    const updatedMessages = [...messages, newUserMessage];
-    
-    setMessages(updatedMessages);
     setInputValue("");
-    setIsTyping(true);
 
     try {
-      const aiResponse = await chatService.sendMessage(userText, updatedMessages);
-      setMessages((prev) => [...prev, aiResponse]);
+      await sendMessage({ text: userText });
     } catch (error) {
       console.error("Chat Error:", error);
-      setMessages((prev) => [
+      setUiMessages((prev) => [
         ...prev,
-        { role: "ai", content: "Sorry, I'm having trouble connecting. Please try again." }
+        {
+          id: `error-${Date.now()}`,
+          role: "assistant",
+          parts: [
+            {
+              type: "text",
+              text: "Sorry, I'm having trouble connecting. Please try again.",
+            },
+          ],
+        },
       ]);
-    } finally {
-      setIsTyping(false);
     }
   };
 
@@ -71,8 +100,7 @@ export function useChat() {
     scrollToBottom,
     clearChat: () => {
       chatService.clearChat();
-      setMessages([]);
-      setIsStarted(false);
-    }
+      setUiMessages([]);
+    },
   };
 }
