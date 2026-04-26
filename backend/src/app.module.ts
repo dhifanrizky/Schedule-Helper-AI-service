@@ -6,6 +6,8 @@ import { UsersModule } from './modules/users/users.module.js';
 import { PrismaModule } from './modules/prisma/prisma.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { AgentModule } from './modules/agent/agent.module';
+import { ChatModule } from './modules/chat/chat.module.js';
+import { SchedulesModule } from './modules/schedules/schedules.module.js';
 
 @Module({
   imports: [
@@ -14,6 +16,8 @@ import { AgentModule } from './modules/agent/agent.module';
     AuthModule,
     UsersModule,
     AgentModule,
+    ChatModule,
+    SchedulesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

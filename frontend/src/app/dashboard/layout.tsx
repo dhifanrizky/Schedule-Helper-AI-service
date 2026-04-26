@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useUser } from "@/hooks/useUser";
+import { chatService } from "@/services/chatService";
 
-type UserProfile = {
-  name: string;
-  email: string;
-};
-
+/**
+ * DASHBOARD LAYOUT
+ * Mengelola Sidebar global dan state profil pengguna.
+ */
 export default function DashboardLayout({
   children,
 }: {
@@ -16,82 +17,32 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-
-  // Dynamic User Profile state
-  // --- STATE LAYOUT GLOBAL ---
-  // Data profil user yang dibagikan ke semua halaman di dalam dashboard (persisten via sessionStorage)
-  const [user, setUser] = useState<UserProfile | null>(null);
-  // Menandai apakah data user masih dalam proses dimuat
-  const [isUserLoading, setIsUserLoading] = useState(true);
-  // Menandai apakah ada pesan chat aktif (untuk memutuskan apakah sidebar ditampilkan)
+  
+  // 1. Logika User (menggantikan useEffect fetchUser manual)
+  const { user, isUserLoading, userInitial, logout } = useUser();
+  
+  // 2. Logika Sidebar (hasMessages menentukan apakah sidebar muncul)
   const [hasMessages, setHasMessages] = useState(false);
 
-  // === INTEGRASI BE: AMBIL DATA USER YANG SEDANG LOGIN ===
-  // [PENJELASAN]: Ganti simulasi di bawah dengan GET request ke endpoint profil.
-  // [METHOD]: GET | [ENDPOINT]: /api/users/me
-  // [HEADERS]: Authorization: Bearer <token>
-  // [RESPONSE]: { id, name, email, createdAt }
-  // [CATATAN]: sessionStorage digunakan sebagai cache sementara.
-  // Sync dengan database diperlukan saat token expired atau user refresh halaman.
-  useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        const storedUser = sessionStorage.getItem("app_user");
-        if (storedUser) {
-          setUser(JSON.parse(storedUser));
-          setIsUserLoading(false);
-          return;
-        }
-
-        await new Promise((res) => setTimeout(res, 2500));
-        const userData = { name: "Dipson", email: "dipson@gmail.com" };
-        setUser(userData);
-        sessionStorage.setItem("app_user", JSON.stringify(userData));
-        // Dispatch custom event if other components are listening
-        window.dispatchEvent(new Event("user_updated"));
-      } catch (e) {
-        console.error(e);
-      } finally {
-        setIsUserLoading(false);
-      }
-    };
-    fetchUser();
-  }, []);
-
-  // === INTEGRASI BE: SINKRONISASI SESSION CHAT ===
-  // [PENJELASAN]: chat_messages di sessionStorage bersifat sementara (hilang jika tab ditutup).
-  // Untuk persistensi permanen, simpan ke database saat user logout atau selesai sesi.
-  // [METHOD]: POST | [ENDPOINT]: /api/sessions/save
-  // [BODY]: { userId: string, messages: Message[] }
-  // [Efek 2] Mendengarkan perubahan pada chat_messages di sessionStorage.
-  // Digunakan untuk memutuskan kapan sidebar harus muncul (saat user sudah mulai chat).
-  // Event 'chat_updated' dikirim dari dashboard/page.tsx setiap ada pesan baru.
   useEffect(() => {
     const checkMessages = () => {
-      const msgs = sessionStorage.getItem("chat_messages");
-      setHasMessages(msgs ? JSON.parse(msgs).length > 0 : false);
+      const messages = chatService.getStoredMessages();
+      setHasMessages(messages.length > 0);
     };
 
     checkMessages();
-    window.addEventListener("storage", checkMessages);
+    // Dengerkan event pembaruan chat agar sidebar muncul otomatis
     window.addEventListener("chat_updated", checkMessages);
-
-    return () => {
-      window.removeEventListener("storage", checkMessages);
-      window.removeEventListener("chat_updated", checkMessages);
-    };
+    return () => window.removeEventListener("chat_updated", checkMessages);
   }, []);
 
-  // Mengambil huruf pertama nama user untuk avatar inisial di sidebar dan header
-  const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : "";
-
-  // Sidebar disembunyikan hanya pada halaman /dashboard JIKA belum ada chat aktif
-  // Ini adalah logika untuk menampilkan Start State vs Chat State
+  // Kondisi "Start State": berada di /dashboard dan belum ada chat
   const isDashboardStart = pathname === "/dashboard" && !hasMessages;
-
-  // Penanda untuk menentukan tautan navigasi mana yang sedang aktif (highlight ungu)
+  
+  // Navigasi Active
   const isDashboardActive = pathname === "/dashboard";
   const isHistoryActive = pathname === "/dashboard/history";
+  const isProfileActive = pathname === "/dashboard/profile";
 
   return (
     <div
@@ -101,17 +52,13 @@ export default function DashboardLayout({
           : "flex h-screen bg-[#FDFDFD] transition-all duration-500 ease-in-out overflow-hidden"
       }
     >
-      {/* 3. Global Sidebar Component */}
+      {/* Sidebar Component */}
       {!isDashboardStart && (
         <aside className="w-[260px] sm:w-[280px] h-full border-r border-gray-100 flex flex-col flex-shrink-0 bg-white z-10">
           <div className="p-6 pb-8 border-b border-gray-100">
             <Link 
               href="/" 
-              onClick={() => {
-                // === INTEGRASI BACKEND: NAVIGASI KE LANDING PAGE ===
-                // Pastikan fungsi ini membersihkan sessionStorage sebelum dialihkan ke '/'
-                sessionStorage.removeItem("chat_messages");
-              }}
+              onClick={() => chatService.clearChat()}
               className="text-[20px] font-bold text-[#0A0A0A] cursor-pointer no-underline block"
             >
               Schedule Helper
@@ -122,114 +69,63 @@ export default function DashboardLayout({
             <Link
               href="/dashboard"
               className={`flex items-center gap-3 px-4 py-3.5 rounded-xl font-medium transition-colors cursor-pointer ${
-                isDashboardActive
-                  ? "bg-[#8A38F5] text-white shadow-sm"
-                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                isDashboardActive ? "bg-[#8A38F5] text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"
               }`}
             >
-              <img
-                src="/images-dashboard/Dashboard.webp"
-                alt="Dashboard"
-                className={`w-5 h-5 object-contain ${
-                  isDashboardActive ? "filter brightness-0 invert" : ""
-                }`}
-              />
+              <img src="/images-dashboard/Dashboard.webp" alt="Dashboard" className={`w-5 h-5 ${isDashboardActive ? "filter brightness-0 invert" : ""}`} />
               Dashboard
             </Link>
             <Link
               href="/dashboard/history"
               className={`flex items-center gap-3 px-4 py-3.5 rounded-xl font-medium transition-colors cursor-pointer ${
-                isHistoryActive
-                  ? "bg-[#8A38F5] text-white shadow-sm"
-                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                isHistoryActive ? "bg-[#8A38F5] text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"
               }`}
             >
-              <img
-                src="/images-dashboard/History.webp"
-                alt="History"
-                className={`w-5 h-5 object-contain ${
-                  isHistoryActive ? "filter brightness-0 invert" : ""
-                }`}
-              />
+              <img src="/images-dashboard/History.webp" alt="History" className={`w-5 h-5 ${isHistoryActive ? "filter brightness-0 invert" : ""}`} />
               History
             </Link>
             <Link
               href="/dashboard/profile"
               className={`flex items-center gap-3 px-4 py-3.5 rounded-xl font-medium transition-colors cursor-pointer ${
-                pathname === "/dashboard/profile"
-                  ? "bg-[#8A38F5] text-white shadow-sm"
-                  : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+                isProfileActive ? "bg-[#8A38F5] text-white shadow-sm" : "text-gray-500 hover:bg-gray-50"
               }`}
             >
-              <img
-                src="/images-dashboard/Profile.webp"
-                alt="Profile"
-                className={`w-5 h-5 object-contain ${
-                  pathname === "/dashboard/profile"
-                    ? "filter brightness-0 invert"
-                    : ""
-                }`}
-              />
+              <img src="/images-dashboard/Profile.webp" alt="Profile" className={`w-5 h-5 ${isProfileActive ? "filter brightness-0 invert" : ""}`} />
               Profile
             </Link>
           </nav>
 
-          {/* Bagian profil user + tombol logout yang selalu di bawah sidebar (sticky) */}
-          {/* Menggunakan mt-auto agar selalu menempel ke bagian bawah sidebar meski konten nav pendek */}
+          {/* User Profile Section */}
           <div className="p-4 border-t border-gray-100 mt-auto">
             <div
               onClick={() => router.push("/dashboard/profile")}
               className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
             >
               {isUserLoading || !user ? (
-                <>
-                  <div className="w-10 h-10 bg-[#C2C2C2] rounded-full animate-pulse shrink-0" />
-                  <div className="flex flex-col gap-2 w-full">
-                    <div className="h-4 bg-gray-200 rounded w-2/3 animate-pulse" />
-                    <div className="h-3 bg-gray-100 rounded w-full animate-pulse" />
-                  </div>
-                </>
+                <div className="w-10 h-10 bg-[#C2C2C2] rounded-full animate-pulse shrink-0" />
               ) : (
                 <>
-                  <div className="w-10 h-10 bg-[#0A0A0A] text-white rounded-full flex items-center justify-center font-semibold text-[15px] shrink-0 animate-in fade-in duration-300">
+                  <div className="w-10 h-10 bg-[#0A0A0A] text-white rounded-full flex items-center justify-center font-semibold text-[15px] shrink-0">
                     {userInitial}
                   </div>
-                  <div className="flex flex-col overflow-hidden animate-in fade-in duration-300">
-                    <span className="text-[14px] font-semibold text-[#0A0A0A] truncate leading-tight">
-                      {user?.name}
-                    </span>
-                    <span className="text-[13px] text-gray-500 truncate mt-0.5">
-                      {user?.email}
-                    </span>
+                  <div className="flex flex-col overflow-hidden">
+                    <span className="text-[14px] font-semibold text-[#0A0A0A] truncate leading-tight">{user.name}</span>
+                    <span className="text-[13px] text-gray-500 truncate mt-0.5">{user.email}</span>
                   </div>
                 </>
               )}
             </div>
             <button
-              onClick={() => {
-                // === INTEGRASI BE: PROSES LOGOUT ===
-                // [PENJELASAN]: Hapus token autentikasi dan bersihkan session.
-                // [METHOD]: POST | [ENDPOINT]: /api/auth/logout
-                // [HEADERS]: Authorization: Bearer <token>
-                // [AKSI]: Hapus token dari Cookie/localStorage, bersihkan sessionStorage, redirect ke '/'
-                sessionStorage.removeItem("chat_messages");
-                sessionStorage.removeItem("app_user");
-                router.push("/");
-              }}
+              onClick={logout}
               className="flex items-center gap-3 mt-4 px-3 text-[14px] text-gray-500 hover:text-gray-900 font-medium w-full text-left transition-colors"
             >
-              <img
-                src="/images-dashboard/Logout.webp"
-                alt="Logout"
-                className="w-[18px] h-[18px] object-contain opacity-80"
-              />
+              <img src="/images-dashboard/Logout.webp" alt="Logout" className="w-[18px] h-[18px] opacity-80" />
               Logout
             </button>
           </div>
         </aside>
       )}
 
-      {/* Render the specific page content inside the remaining space */}
       {children}
     </div>
   );

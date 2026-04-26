@@ -1,0 +1,44 @@
+// =============================================================
+// TERPUSAT: Semua TypeScript types untuk seluruh aplikasi
+// Impor dari file ini di mana pun dibutuhkan:
+// import type { Message, UserProfile, ... } from "@/types"
+// =============================================================
+
+// Satu pesan dalam percakapan antara user dan AI
+export type Message = {
+  role: "user" | "ai";
+  content: string;
+};
+
+// Data profil pengguna yang login
+// === INTEGRASI BE: Sesuaikan dengan response GET /api/users/me ===
+export type UserProfile = {
+  name: string;
+  email: string;
+};
+
+// Satu item dalam daftar riwayat jadwal (History page)
+// === INTEGRASI BE: Sesuaikan dengan response GET /api/schedules/history ===
+export type HistoryItem = {
+  id: string;         // ID unik jadwal untuk routing ke halaman detail
+  title: string;      // Judul sesi (ringkasan dari chat user)
+  date: string;       // Tanggal dibuat (format string dari backend)
+  priorities: number; // Jumlah tugas prioritas tinggi
+  quickWins: number;  // Jumlah tugas quick win
+  status: string;     // Status: 'completed' | 'in_progress' | 'cancelled'
+};
+
+// Satu item dalam jadwal harian (Today's Schedule di Result page)
+// === INTEGRASI BE: Sesuaikan dengan field timeline[] dari /api/schedules/generate ===
+export type ScheduleItem = {
+  time: string;  // Contoh: "9:00 - 9:25"
+  title: string; // Contoh: "Quick Wins Session"
+};
+
+// Payload yang dikirim saat user menekan "Generate My Schedule"
+// === INTEGRASI BE: Kirim ke POST /api/schedules/generate ===
+export type QuestionnairePayload = {
+  energyLevel: number; // 1 = Rendah, 2 = Sedang, 3 = Tinggi
+  mood: number;        // 1 = Happy, 2 = Netral, 3 = Stres
+  availableTime: string; // Contoh: "2 - 4 Hours"
+};
