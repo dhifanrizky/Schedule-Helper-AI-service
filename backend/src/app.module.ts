@@ -5,6 +5,8 @@ import { AppService } from './app.service.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PrismaModule } from './modules/prisma/prisma.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { ChatModule } from './modules/chat/chat.module.js';
+import { SchedulesModule } from './modules/schedules/schedules.module.js';
 
 @Module({
   imports: [
@@ -12,6 +14,8 @@ import { AuthModule } from './modules/auth/auth.module.js';
     PrismaModule,
     AuthModule,
     UsersModule,
+    ChatModule,
+    SchedulesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
