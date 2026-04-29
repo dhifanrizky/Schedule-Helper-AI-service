@@ -1,12 +1,20 @@
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
 from app.graph.state import AppState
 from app.graph.agents.helpers import get_proposed_schedule, get_metadata, ai_msg
 from app.graph.types import ScheduleItem
-from datetime import datetime, timedelta, timezone
 
 # ---------------------------------------------------------------------------
-# Agent 4: SchedulerAgent
-# Tidak ada HITL - langsung eksekusi setelah proposed_schedule diapprove.
+# Agent 4 / Scheduler
+# Catatan:
+# - Scheduler menerima proposed_schedule dari Agent 3.
+# - Tidak membuat prioritas lagi.
+# - Hanya validasi dan mengirim jadwal ke calendar_client.
 # ---------------------------------------------------------------------------
+
+
+DEFAULT_TIMEZONE = "Asia/Jakarta"
 
 
 def make_scheduler(llm, calendar_client):
@@ -41,7 +49,7 @@ def make_scheduler(llm, calendar_client):
             }
 
         return {
-            **ai_msg(f"Semua {len(schedule_items)} tugas sudah dijadwalkan di Google Calendar."),
+            **ai_msg(f"Semua {len(event_ids)} tugas sudah dijadwalkan di Google Calendar."),
             "metadata": {
                 **metadata,
                 "scheduled": True,
@@ -53,6 +61,7 @@ def make_scheduler(llm, calendar_client):
                 "event_ids": event_ids,
             },
             "error_message": None,
+            "final_message": f"Berhasil menjadwalkan {len(event_ids)} tugas.",
         }
 
     return run
@@ -61,19 +70,21 @@ def make_scheduler(llm, calendar_client):
 def _schedule_items(
     calendar_client,
     schedule_items: list[ScheduleItem],
-    metadata: dict
+    metadata: dict,
 ) -> list[str]:
     event_ids: list[str] = []
-    timezone_name = metadata.get("timezone") or "UTC"
+    timezone_name = metadata.get("timezone") or DEFAULT_TIMEZONE
 
     for item in schedule_items:
-        start_dt = _parse_iso_datetime(item["start_time"])
+        start_dt = _parse_iso_datetime(item["start_time"], timezone_name)
         end_dt = start_dt + timedelta(minutes=int(item["duration_minutes"]))
 
         payload = {
             "title": item["task"],
             "description": (
-                f"task_id={item['task_id']} | priority={item['priority']} | category={item['category']}"
+                f"task_id={item['task_id']} | "
+                f"priority={item['priority']} | "
+                f"category={item['category']}"
             ),
             "start": start_dt.isoformat(),
             "end": end_dt.isoformat(),
@@ -86,14 +97,15 @@ def _schedule_items(
     return event_ids
 
 
-def _parse_iso_datetime(value: str) -> datetime:
+def _parse_iso_datetime(value: str, timezone_name: str = DEFAULT_TIMEZONE) -> datetime:
     try:
         dt = datetime.fromisoformat(value)
     except ValueError as err:
         raise ValueError(f"start_time harus ISO-8601 valid: {value}") from err
 
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=ZoneInfo(timezone_name))
+
     return dt
 
 
@@ -102,7 +114,14 @@ def _validate_schedule_items(schedule_items: list[ScheduleItem]) -> list[Schedul
         raise ValueError("proposed_schedule harus berupa list dan tidak boleh kosong.")
 
     normalized: list[ScheduleItem] = []
-    required_keys = {"task_id", "task", "priority", "start_time", "duration_minutes", "category"}
+    required_keys = {
+        "task_id",
+        "task",
+        "priority",
+        "start_time",
+        "duration_minutes",
+        "category",
+    }
 
     for idx, item in enumerate(schedule_items, start=1):
         if not isinstance(item, dict):
@@ -129,6 +148,9 @@ def _validate_schedule_items(schedule_items: list[ScheduleItem]) -> list[Schedul
         priority = item.get("priority")
         if not isinstance(priority, int):
             raise ValueError(f"Item ke-{idx} priority harus integer.")
+
+        if priority not in [1, 2, 3]:
+            raise ValueError(f"Item ke-{idx} priority harus 1, 2, atau 3.")
 
         category = str(item.get("category") or "biasa").strip() or "biasa"
 
