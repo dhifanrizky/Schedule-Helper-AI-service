@@ -17,7 +17,7 @@ INTENT_MAP: dict[str, list[str]] = {
 }
 
 ROUTER_LLM_PROVIDER = "groq"
-ROUTER_LLM_MODEL = "llama-3.3-70b-versatile"
+ROUTER_LLM_MODEL = "openai/gpt-oss-120b"
 ROUTER_LLM_TEMPERATURE = 0.3
 
 _graph: CompiledStateGraph | None = None

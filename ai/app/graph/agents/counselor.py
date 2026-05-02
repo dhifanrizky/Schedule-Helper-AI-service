@@ -1,94 +1,235 @@
-from langgraph.types import interrupt
+from langgraph.types import interrupt as _langgraph_interrupt
+from pydantic import BaseModel, Field
 from app.graph.state import AppState
-from app.graph.agents.helpers import last_message, ai_msg, get_hitl_input
+from app.graph.agents.helpers import last_message, ai_msg, get_hitl_input, get_raw_tasks
 
 # ---------------------------------------------------------------------------
 # Agent 2: CounselorAgent
-# HITL aktif di sini — graph akan pause dan tunggu /resume sebelum lanjut.
+# HITL aktif di sini — graph pause dan tunggu /resume sebelum lanjut.
+#
+# TUGAS:
+#   1. Validasi perasaan user secara empatik dan hangat
+#   2. Identifikasi masalah utama + tugas-tugas yang dihadapi user
+#   3. Rumuskan kebutuhan praktis user yang actionable
+#   4. Tanya ke user — kesimpulan udah pas, atau mau tambahin cerita?
+#   5. Loop sampai user merasa dipahami, baru lanjut ke Prioritizer
+#
+# HITL PAYLOAD yang dikirim ke frontend via /chat (execution_complete):
+#   {
+#     "type": "counselor_review",
+#     "draft": str,      # respons empatik dari LLM — ditampilkan ke user
+#     "message": str,    # pertanyaan konfirmasi di bawah draft
+#   }
+#
+# INPUT dari /resume (hitl_input) yang diharapkan:
+#   {
+#     "approved": bool,          # True = user puas, lanjut ke Prioritizer
+#     "additional_context": str  # Kalau False, user tambahin cerita/konteks baru
+#   }
+#
+# LOOP:
+#   - approved=True  → counselor_done=True → graph lanjut ke Prioritizer
+#   - approved=False → counselor_done=False → counselor jalan lagi dengan
+#                      additional_context sebagai konteks tambahan
 # ---------------------------------------------------------------------------
 
+MAX_COUNSELOR_LOOPS = 3
 
-def make_counselor(llm):
+
+# ---------------------------------------------------------------------------
+# Structured output schema — satu LLM call menghasilkan draft + bridge
+# sekaligus, sehingga tidak ada round-trip tambahan saat approved.
+# bridge hanya ditampilkan ke user ketika approved=True.
+# ---------------------------------------------------------------------------
+class CounselorOutput(BaseModel):
+    draft: str = Field(
+        description=(
+            "Respons empatik: validasi perasaan, sebutkan tugas yang terdeteksi, "
+            "identifikasi sumber stress, rumuskan kebutuhan praktis. "
+            "Akhiri SELALU dengan: 'Kesimpulan ini udah pas sama kondisi kamu, "
+            "atau mau tambahin sesuatu dulu?'"
+        )
+    )
+    bridge: str = Field(
+        description=(
+            "1-2 kalimat transisi dari sesi konseling ke tahap penjadwalan. "
+            "Hanya ditampilkan ke user jika user approve (puas). "
+            "Boleh kasih saran micro (istirahat sebentar, tarik napas) sebelum "
+            "tawarin jadwal. Jangan ulangi validasi. Jangan terlalu semangat/salesy. "
+            "Akhiri dengan tawaran konkret ke jadwal, bukan pertanyaan."
+        )
+    )
+
+
+def make_counselor(llm, _interrupt=None):
     """
     Factory untuk CounselorAgent.
-    Tugas: empati + brain dump → minta konfirmasi user sebelum lanjut.
 
-    HITL payload yang dikirim ke frontend:
-    {
-        "type": "counselor_review",
-        "message": str,   # pertanyaan konfirmasi untuk user
-        "draft": str,     # draft respons dari LLM
-    }
-
-    Input dari /resume (hitl_input) yang diharapkan:
-    {
-        "approved": bool,
-        "edited_draft": str | None   # jika user ingin edit draft
-    }
+    Args:
+        llm: LLM instance (BaseChatModel).
+        _interrupt: Override interrupt — HANYA untuk testing. Di production biarkan None.
     """
+    interrupt_fn = _interrupt if _interrupt is not None else _langgraph_interrupt
+    structured_llm = llm.with_structured_output(CounselorOutput)
 
     def run(state: AppState) -> dict:
         user_msg = last_message(state)
-        previous_feedback = get_hitl_input(state) or {}
+        raw_tasks = get_raw_tasks(state)
+        previous_hitl = get_hitl_input(state) or {}
+        loop_count = len(state.get("counselor_response") or [])
 
-        # Jika loop dari reject sebelumnya, pakai feedback user sebagai konteks tambahan.
-        feedback_note = previous_feedback.get("feedback") or previous_feedback.get("reason") or ""
-        draft = _generate_response(llm, user_msg, feedback_note)
+        # Safety: paksa selesai kalau sudah terlalu banyak loop
+        if loop_count >= MAX_COUNSELOR_LOOPS:
+            forced_msg = (
+                "Oke, aku udah paham situasimu sekarang. "
+                "Yuk kita mulai atur satu per satu supaya lebih manageable!"
+            )
+            
+            result_to_return = {
+                **ai_msg(forced_msg),
+                "counselor_response": [forced_msg],
+                "counselor_done": True,
+                "hitl_status": "approved",
+                "hitl_input": None,
+            }
+            # PRINT OUTPUT SEBELUM RETURN
+            print("\n[DEBUG] Returning from MAX_COUNSELOR_LOOPS:\n", result_to_return, "\n")
+            return result_to_return
 
-        # graph pause di sini — tunggu user approve/edit dari frontend
-        hitl_result = interrupt({
+        # Ambil konteks tambahan dari loop sebelumnya (kalau ada)
+        additional_context = previous_hitl.get("additional_context", "")
+
+        # Satu LLM call → draft (untuk HITL) + bridge (untuk approved path)
+        output = _generate_response(structured_llm, user_msg, raw_tasks, additional_context)
+
+        # Graph pause di sini — tunggu /resume dari NestJS
+        hitl_result = interrupt_fn({
             "type": "counselor_review",
-            "message": "Apakah rangkuman ini sudah sesuai dengan yang kamu rasakan?",
-            "draft": draft,
-            "hint": "Kirim approved=false + feedback supaya counselor bisa membedah lagi.",
+            "draft": output.draft,
+            "message": (
+                "Kesimpulan ini udah sesuai sama kondisi kamu? "
+                "Atau mau tambahin cerita dulu sebelum kita lanjut?"
+            ),
         }) or {}
-
+        
+        print("\n[DEBUG] HITL Result received:\n", hitl_result, "\n")
+        
         approved = bool(hitl_result.get("approved"))
+
         if not approved:
-            return {
-                **ai_msg("Siap, kita bedah lagi pelan-pelan sampai ketemu kebutuhan utamamu."),
-                "counselor_response": [draft],
+            # User mau tambahin cerita — simpan konteksnya, loop ulang
+            bridge_msg = (
+                "Oke, makasih udah mau cerita lebih! "
+                "Aku coba rangkum ulang ya dengan info yang baru kamu kasih."
+            )
+            
+            result_to_return = {
+                **ai_msg(bridge_msg),
+                "counselor_response": [output.draft],
                 "counselor_done": False,
                 "hitl_status": "rejected",
                 "hitl_input": hitl_result,
             }
+            # PRINT OUTPUT SEBELUM RETURN
+            print("\n[DEBUG] Returning from REJECTED (Not Approved) loop:\n", result_to_return, "\n")
+            return result_to_return
 
-        final = hitl_result.get("edited_draft") or draft
-        return {
-            **ai_msg(final),
-            "counselor_response": [final],
+        # User puas — tampilkan draft + bridge sebagai jembatan ke Prioritizer
+        full_response = f"{output.draft}\n\n{output.bridge}"
+        
+        result_to_return = {
+            **ai_msg(full_response),
+            "counselor_response": [full_response],
             "counselor_done": True,
             "hitl_status": "approved",
             "hitl_input": None,
         }
+        # PRINT OUTPUT SEBELUM RETURN
+        print("\n[DEBUG] Returning from APPROVED (Happy Path):\n", result_to_return, "\n")
+        return result_to_return
 
     return run
 
 
-def _generate_response(llm, user_msg: str, feedback_note: str = "") -> str:
+def _generate_response(
+    structured_llm,
+    user_msg: str,
+    raw_tasks: list,
+    additional_context: str = "",
+) -> CounselorOutput:
     """
-    Buat draft respons empatik + membantu user menemukan kebutuhan utama.
+    Satu LLM call menghasilkan CounselorOutput(draft, bridge) sekaligus.
+
+    Args:
+        structured_llm: llm.with_structured_output(CounselorOutput).
+        user_msg: Pesan asli dari user.
+        raw_tasks: Task yang sudah diekstrak Router.
+        additional_context: Cerita tambahan dari user di loop sebelumnya.
+
+    Returns:
+        CounselorOutput dengan field draft dan bridge.
+        Fallback ke CounselorOutput statis jika LLM error.
     """
-    prompt = (
-        "Kamu adalah counselor yang empatik dan ringkas. "
-        "Tugasmu: validasi perasaan user, bedah inti masalah, lalu rumuskan kebutuhan praktis yang bisa ditindaklanjuti.\n\n"
-        f"Curhatan user: {user_msg}\n"
-    )
-    if feedback_note:
-        prompt += f"Feedback tambahan dari user: {feedback_note}\n"
-    prompt += (
-        "Akhiri dengan 1 pertanyaan konfirmasi yang konkret agar user bisa approve atau minta revisi."
-    )
+    task_context = ""
+    if raw_tasks:
+        task_lines = "\n".join(
+            f"- {t.get('title', t.get('raw_input', ''))}"
+            for t in raw_tasks
+        )
+        task_context = f"\nTugas yang sudah terdeteksi dari cerita user:\n{task_lines}"
+
+    extra_context = ""
+    if additional_context:
+        extra_context = f"\nInformasi tambahan dari user: {additional_context}"
+
+    task_titles = [t.get("title", "") for t in raw_tasks if t.get("title")]
+    task_list_str = ", ".join(task_titles[:3]) if task_titles else "tugas-tugasmu"
+
+    prompt = f"""Kamu adalah teman curhat yang empatik, hangat, dan mudah diajak ngobrol.
+Gunakan bahasa yang SAMA dengan user — kalau user pakai bahasa informal/gaul Indonesia, balas dengan gaya yang sama. Jangan kaku.
+
+Kamu akan menghasilkan dua bagian sekaligus:
+
+=== BAGIAN 1: draft ===
+Respons empatik (maksimal 5-6 kalimat):
+1. Validasi perasaan user — akui bahwa kondisinya memang berat, jangan langsung kasih solusi
+2. Sebutkan masalah/tugas yang kamu tangkap dari ceritanya
+3. Identifikasi apa yang paling bikin dia stress — deadline mepet? terlalu banyak? ga tau mulai dari mana?
+4. Rumuskan kebutuhan praktisnya dalam 1 kalimat yang konkret
+5. Akhiri SELALU dengan: "Kesimpulan ini udah pas sama kondisi kamu, atau mau tambahin sesuatu dulu?"
+
+=== BAGIAN 2: bridge ===
+1-2 kalimat transisi ke tahap penjadwalan. Ditampilkan HANYA jika user approve.
+- Boleh kasih saran micro dulu (istirahat sebentar, tarik napas) sebelum tawarin jadwal
+- Jangan ulangi validasi dari draft
+- Jangan terlalu semangat/salesy
+- Akhiri dengan tawaran konkret ke jadwal: sebutkan "{task_list_str}" secara natural
+- Bukan pertanyaan — ini pernyataan/ajakan
+
+JANGAN di draft:
+- Langsung kasih solusi atau jadwal
+- Terlalu formal atau terkesan seperti chatbot
+- Lebih dari 6 kalimat
+
+Curhatan user:
+{user_msg}\n{task_context}\n{extra_context}"""
 
     try:
-        response = llm.invoke(prompt)
-        content = getattr(response, "content", response)
-        if isinstance(content, str) and content.strip():
-            return content.strip()
-        return str(content)
+        return structured_llm.invoke([
+            {"role": "system", "content": "Kamu asisten empatik yang membantu user mengelola stress dan tugas."},
+            {"role": "user", "content": prompt},
+        ])
     except Exception:
-        # Fallback aman jika provider LLM error.
-        return (
-            "Aku paham ini lagi berat. Dari ceritamu, kebutuhan utamanya adalah menata langkah kecil "
-            "yang paling mendesak dulu supaya kamu tidak kewalahan."
+        task_mention = f" — {task_list_str}" if task_titles else ""
+        return CounselorOutput(
+            draft=(
+                f"Waduh, kedengarannya berat banget nih{task_mention}. "
+                "Wajar banget kalo kamu ngerasa overwhelmed, apalagi semuanya kayak dateng barengan. "
+                "Yang paling penting sekarang adalah tau dulu mana yang paling mendesak buat diselesaiin. "
+                "Kesimpulan ini udah pas sama kondisi kamu, atau mau tambahin sesuatu dulu?"
+            ),
+            bridge=(
+                f"Oke, yuk sekarang kita susun {task_list_str} satu per satu "
+                "biar ga semuanya kepikiran barengan."
+            ),
         )

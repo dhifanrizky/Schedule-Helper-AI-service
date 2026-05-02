@@ -14,11 +14,9 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    // Hash the password
     const hash = await argon2.hash(dto.password);
 
     try {
-      // Save user to database
       const user = await this.prisma.user.create({
         data: {
           email: dto.email,
@@ -29,7 +27,6 @@ export class AuthService {
 
       return this.signToken(user.id, user.email);
     } catch (error) {
-      // Handle unique constraint violation (duplicate email)
       if (
         error &&
         typeof error === 'object' &&
@@ -43,17 +40,14 @@ export class AuthService {
   }
 
   async login(dto: LoginDto) {
-    // Find user by email
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
-    // If user not found, throw error
     if (!user) {
       throw new ForbiddenException('Invalid credentials');
     }
 
-    // Verify password
     const passwordValid = await argon2.verify(user.hash, dto.password);
 
     if (!passwordValid) {
@@ -76,6 +70,7 @@ export class AuthService {
     const expiresIn = this.config.get<string>('JWT_EXPIRES_IN') || '1d';
 
     const token = await this.jwt.signAsync(payload, {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       expiresIn: expiresIn as any,
       secret,
     });

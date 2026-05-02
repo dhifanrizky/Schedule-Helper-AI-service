@@ -17,7 +17,10 @@ class ScheduleItem(TypedDict):
     category: CategoryType
 
 class RawTask(BaseModel):
-    task_id: str = Field(description="ID sekuensial, mulai dari task_001")
+    task_id: str = Field(
+        default="",
+        description="ID yang ditetapkan sistem setelah routing, misalnya UUID atau format lain yang tidak dibuat LLM",
+    )
     title: str = Field(description="Judul singkat dalam bahasa user")
      
     description: str = Field(

@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { ChatDto } from './dto/chat.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -6,14 +10,19 @@ import {
   InternalServerErrorException,
 } from '@nestjs/common';
 import { Prisma } from '../../../generated/prisma/client';
-/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access */
+import { RawTask } from './types/agent-output.type';
 
 @Injectable()
 export class AgentService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createSession(chatDto: ChatDto, userId: string) {
-    // 1. Kasih default atau validasi agar tidak 'undefined'
+  async upsertSession(
+    chatDto: ChatDto,
+    userId: string,
+    status = 'active',
+    intent?: string,
+    aiMessage?: string,
+  ) {
     const sessionId = chatDto.thread_id;
 
     if (!sessionId) {
@@ -21,34 +30,59 @@ export class AgentService {
     }
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-return
       return await this.prisma.$transaction(async (tx) => {
-        // 2. Cek session
-        const existingSession = await tx.session.findUnique({
-          where: { id: sessionId },
-        });
-        const user = await tx.user.findFirst({
+        // Optional validation
+        const userExists = await tx.user.findUnique({
           where: { id: userId },
+          select: { id: true },
         });
-        console.log(user);
 
-        if (!existingSession) {
-          await tx.session.create({
-            data: {
-              id: sessionId,
-              userId: userId,
-              status: 'active',
-            },
+        if (!userExists) {
+          throw new BadRequestException('User not found');
+        }
+
+        await tx.session.upsert({
+          where: {
+            id: sessionId,
+          },
+          create: {
+            id: sessionId,
+            userId,
+            status,
+            latestIntent: intent,
+          },
+          update: {
+            status,
+            latestIntent: intent,
+          },
+        });
+
+        const messages: Prisma.MessageCreateManyInput[] = [];
+
+        if (chatDto.message) {
+          messages.push({
+            sessionId,
+            role: 'user',
+            content: chatDto.message,
           });
         }
 
-        // 3. Simpan pesan
-        await tx.message.create({
-          data: {
-            sessionId: sessionId, // Sekarang TS yakin ini string
-            role: 'user',
-            content: chatDto.message,
-          },
+        if (aiMessage) {
+          messages.push({
+            sessionId,
+            role: 'system',
+            content: aiMessage,
+          });
+        }
+
+        if (messages.length > 0) {
+          await tx.message.createMany({
+            data: messages,
+          });
+        }
+
+        await tx.message.createMany({
+          data: messages,
         });
 
         return {
@@ -56,27 +90,91 @@ export class AgentService {
           status: 'accepted',
         };
       });
-    } catch (error: any) {
-      // Pakai :any atau lakukan pengecekan tipe
-      // Cek apakah ini error dari Prisma
-      console.log(userId);
+    } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2003') {
-          throw new BadRequestException(
-            'User ID tidak valid atau tidak ditemukan di database.',
-          );
+        switch (error.code) {
+          case 'P2003':
+            throw new BadRequestException('Invalid foreign key reference');
+
+          case 'P2025':
+            throw new NotFoundException('Referenced data not found');
         }
       }
 
-      // Lempar error asli kalau bukan P2003
-      throw new InternalServerErrorException(
-        error.message || 'AI Service Error',
-      );
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+
+      throw new InternalServerErrorException('Unknown server error');
     }
   }
 
-  create() {
-    return 'This action adds a new agent';
+  async upsertRawTask(userId: string, rawTasks: RawTask[]) {
+    if (!userId || !rawTasks?.length) {
+      throw new BadRequestException('user_id and raw_tasks is required');
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        // Validasi user sekali aja
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { id: true },
+        });
+
+        if (!user) {
+          throw new BadRequestException('User not found');
+        }
+
+        // Parallel upsert semua task
+        await Promise.all(
+          rawTasks.map((rt) =>
+            tx.task.upsert({
+              where: {
+                id: rt.task_id,
+              },
+              update: {
+                title: rt.title,
+                description: rt.description,
+                category: rt.category,
+                rawInput: rt.raw_input,
+                rawTime: rt.raw_time,
+              },
+              create: {
+                id: rt.task_id,
+                userId,
+                title: rt.title,
+                description: rt.description,
+                category: rt.category,
+                rawInput: rt.raw_input,
+                rawTime: rt.raw_time,
+              },
+            }),
+          ),
+        );
+
+        return {
+          status: 'success',
+          total: rawTasks.length,
+        };
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        switch (error.code) {
+          case 'P2003':
+            throw new BadRequestException('Invalid foreign key reference');
+
+          case 'P2002':
+            throw new ConflictException('Duplicate task detected');
+        }
+      }
+
+      if (error instanceof Error) {
+        throw new InternalServerErrorException(error.message);
+      }
+
+      throw new InternalServerErrorException('Unknown server error');
+    }
   }
 
   findAll() {
