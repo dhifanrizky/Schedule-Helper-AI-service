@@ -1,3 +1,5 @@
+from uuid import UUID
+
 from langchain_core.messages import HumanMessage
 
 import app.graph.agents.router as router_module
@@ -46,6 +48,7 @@ def test_make_router_sets_current_intent():
 
     assert result["current_intent"] == "manage_task"
     assert len(result["raw_tasks"]) == 1
+    UUID(result["raw_tasks"][0]["task_id"])
 
 
 def test_make_router_reads_from_messages_when_user_input_missing():

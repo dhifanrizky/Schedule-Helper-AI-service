@@ -84,13 +84,17 @@ def make_counselor(llm, _interrupt=None):
                 "Oke, aku udah paham situasimu sekarang. "
                 "Yuk kita mulai atur satu per satu supaya lebih manageable!"
             )
-            return {
+            
+            result_to_return = {
                 **ai_msg(forced_msg),
                 "counselor_response": [forced_msg],
                 "counselor_done": True,
                 "hitl_status": "approved",
                 "hitl_input": None,
             }
+            # PRINT OUTPUT SEBELUM RETURN
+            print("\n[DEBUG] Returning from MAX_COUNSELOR_LOOPS:\n", result_to_return, "\n")
+            return result_to_return
 
         # Ambil konteks tambahan dari loop sebelumnya (kalau ada)
         additional_context = previous_hitl.get("additional_context", "")
@@ -107,7 +111,9 @@ def make_counselor(llm, _interrupt=None):
                 "Atau mau tambahin cerita dulu sebelum kita lanjut?"
             ),
         }) or {}
-
+        
+        print("\n[DEBUG] HITL Result received:\n", hitl_result, "\n")
+        
         approved = bool(hitl_result.get("approved"))
 
         if not approved:
@@ -116,23 +122,31 @@ def make_counselor(llm, _interrupt=None):
                 "Oke, makasih udah mau cerita lebih! "
                 "Aku coba rangkum ulang ya dengan info yang baru kamu kasih."
             )
-            return {
+            
+            result_to_return = {
                 **ai_msg(bridge_msg),
                 "counselor_response": [output.draft],
                 "counselor_done": False,
                 "hitl_status": "rejected",
                 "hitl_input": hitl_result,
             }
+            # PRINT OUTPUT SEBELUM RETURN
+            print("\n[DEBUG] Returning from REJECTED (Not Approved) loop:\n", result_to_return, "\n")
+            return result_to_return
 
         # User puas — tampilkan draft + bridge sebagai jembatan ke Prioritizer
         full_response = f"{output.draft}\n\n{output.bridge}"
-        return {
+        
+        result_to_return = {
             **ai_msg(full_response),
             "counselor_response": [full_response],
             "counselor_done": True,
             "hitl_status": "approved",
             "hitl_input": None,
         }
+        # PRINT OUTPUT SEBELUM RETURN
+        print("\n[DEBUG] Returning from APPROVED (Happy Path):\n", result_to_return, "\n")
+        return result_to_return
 
     return run
 
@@ -198,7 +212,7 @@ JANGAN di draft:
 - Lebih dari 6 kalimat
 
 Curhatan user:
-{user_msg}{task_context}{extra_context}"""
+{user_msg}\n{task_context}\n{extra_context}"""
 
     try:
         return structured_llm.invoke([

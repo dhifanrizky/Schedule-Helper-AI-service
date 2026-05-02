@@ -1,11 +1,17 @@
+/* eslint-disable 
+  @typescript-eslint/no-unsafe-assignment,
+  @typescript-eslint/no-unsafe-member-access
+*/
+
 import { Controller, Get, Req, Post, Body, Param, Res } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { AgentService } from './agent.service';
 import { ApiTags } from '@nestjs/swagger';
-import { GetUser } from '../auth/decorator/get-user.decorator';
 import { ChatDto } from './dto/chat.dto';
 import axios from 'axios';
 import { Readable } from 'stream';
+import { RouterType } from './types/agent-output.type';
+import { threadId } from 'worker_threads';
 
 @ApiTags('agent')
 // @ApiBearerAuth()
@@ -21,64 +27,113 @@ export class AgentController {
     @Req() req: Request,
   ) {
     try {
-      const userId = `caa8293b-8d8f-48ea-ab5f-a1d354a88077`;
+      const userId = 'caa8293b-8d8f-48ea-ab5f-a1d354a88077';
+
       const cleanPayload: ChatDto = {
         message: body.message,
         ...(body.thread_id?.trim() ? { thread_id: body.thread_id.trim() } : {}),
       };
-
+      console.log(cleanPayload);
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
 
       res.flushHeaders();
-      console.log(cleanPayload);
+
+      const isResume = !!cleanPayload.thread_id;
 
       const fastApiResponse = await axios<Readable>({
         method: 'POST',
-        url: 'http://localhost:8000/chat/stream',
-        data: {
-          user_id: userId,
-          ...cleanPayload,
-        },
+        url: `${process.env.AI_API ?? 'http://localhost:8000'}${
+          isResume ? `/resume/${cleanPayload.thread_id}` : '/chat/stream'
+        }`,
+        data: isResume
+          ? {
+              user_id: userId,
+              thread_id: cleanPayload.thread_id,
+              approved_data: body.approved_data,
+            }
+          : {
+              user_id: userId,
+              ...cleanPayload,
+            },
         responseType: 'stream',
       });
-      console.log(fastApiResponse.data);
-      let threadId: string;
-      fastApiResponse.data.on('data', (chunk: Buffer) => {
-        const line = chunk.toString();
 
-        // SSE format itu "data: {...}\n\n"
-        if (line.includes('data:')) {
+      let sessionThreadId = cleanPayload.thread_id;
+      let status: string | undefined;
+      let routerData: RouterType | undefined;
+      let aiMessage: string | undefined;
+      let buffer = '';
+
+      fastApiResponse.data.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString();
+
+        const events = buffer.split('\n\n');
+
+        buffer = events.pop() ?? '';
+
+        for (const eventBlock of events) {
           try {
-            // Ambil bagian JSON-nya saja
-            const jsonStr = line.split('data: ')[1]?.split('\n')[0];
-            if (jsonStr) {
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-              const data = JSON.parse(jsonStr);
-              // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-              threadId = data?.thread_id;
-              if (threadId) {
-                console.log('DAPET THREAD ID-NYA:', threadId);
-                // Kamu bisa simpan ke DB Session di sini secara async
+            const lines = eventBlock.split('\n');
+
+            let eventType = '';
+            let jsonStr = '';
+
+            for (const line of lines) {
+              if (line.startsWith('event:')) {
+                eventType = line.replace('event:', '').trim();
+              }
+
+              if (line.startsWith('data:')) {
+                jsonStr += line.replace('data:', '').trim();
               }
             }
-          } catch (e) {
-            // Abaikan kalau chunk-nya parsial/potongan
+
+            if (!jsonStr) continue;
+
+            const data = JSON.parse(jsonStr);
+
+            if (data?.thread_id) {
+              sessionThreadId = data.thread_id;
+            }
+
+            if (eventType === 'agent_step' && data?.update?.node === 'router') {
+              routerData = data.update.update;
+            }
+
+            if (eventType === 'execution_complete') {
+              status = data.status;
+              aiMessage = data?.hitl_payload?.draft;
+            }
+          } catch (error) {
+            console.error('SSE parse error:', error);
           }
         }
       });
+
       fastApiResponse.data.on('end', () => {
-        // Disini kamu bisa update status Session di Prisma jadi "waiting_hitl" atau "done"
-        const newPayload = {
+        if (!sessionThreadId) return;
+
+        const payload: ChatDto = {
           ...cleanPayload,
-          thread_id: threadId,
+          thread_id: sessionThreadId,
         };
-        void this.agentService.createSession(newPayload, userId);
+
+        void this.agentService.upsertSession(
+          payload,
+          userId,
+          status,
+          routerData?.current_intent,
+          aiMessage,
+        );
+
+        if (routerData?.raw_tasks?.length) {
+          void this.agentService.upsertRawTask(userId, routerData.raw_tasks);
+        }
       });
 
       req.on('close', () => {
-        // Kalau user tutup browser di tengah jalan, matikan stream dari FastAPI
         fastApiResponse.data.destroy();
       });
 
