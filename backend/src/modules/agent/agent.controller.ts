@@ -54,7 +54,7 @@ export class AgentController {
           : {
               user_id: userId,
               thread_id: cleanPayload.thread_id,
-              message: cleanPayload.message, // ← ensure message is NOT undefined
+              message: cleanPayload.message,
             },
         responseType: 'stream',
       });

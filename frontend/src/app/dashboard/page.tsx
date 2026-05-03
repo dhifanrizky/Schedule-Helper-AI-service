@@ -23,7 +23,8 @@ export default function DashboardPage() {
     isTyping,
     isStarted,
     messagesEndRef,
-    handleSend
+    handleSend,
+    hitlPayload
   } = useChat(user?.email);
 
   // 3. Logika Kuesioner & Pembuatan Jadwal
@@ -84,6 +85,7 @@ export default function DashboardPage() {
       setInputValue={setInputValue}
       handleSend={handleSend}
       messagesEndRef={messagesEndRef}
+      hitlPayload={hitlPayload}
       // Props kuesioner
       energyLevel={energyLevel}
       setEnergyLevel={setEnergyLevel}

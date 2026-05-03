@@ -1,3 +1,7 @@
+import { PrioritizerTask } from "@/hooks/useChat";
+
+type QuestionnaireVariant = "questionnaire" | "prioritizer";
+
 interface QuestionnaireCardProps {
   energyLevel: number;
   setEnergyLevel: (val: number) => void;
@@ -7,7 +11,11 @@ interface QuestionnaireCardProps {
   setAvailableTime: (val: string) => void;
   isDropdownOpen: boolean;
   setIsDropdownOpen: (val: boolean) => void;
-  onGenerate: () => void;
+  onGenerate?: () => void;
+  variant?: QuestionnaireVariant;
+  prioritizerMessage?: string;
+  prioritizerTasks?: PrioritizerTask[];
+  onConfirmPriorities?: (tasks: PrioritizerTask[]) => void;
 }
 
 export function QuestionnaireCard({
@@ -19,103 +27,200 @@ export function QuestionnaireCard({
   setAvailableTime,
   isDropdownOpen,
   setIsDropdownOpen,
-  onGenerate
+  onGenerate = () => {},
+  variant = "questionnaire",
+  prioritizerMessage,
+  prioritizerTasks = [],
+  onConfirmPriorities
 }: QuestionnaireCardProps) {
   const timeOptions = ["Less than 2 Hours", "2 - 4 Hours", "4 - 6 Hours", "More than 6 Hours"];
+  const isPrioritizer = variant === "prioritizer";
+
+  const getIntensityLabel = (value: number) => {
+    if (value >= 5) return "Very high";
+    if (value === 4) return "High";
+    if (value === 3) return "Medium";
+    if (value === 2) return "Low";
+    return "Very low";
+  };
 
   return (
     <div className="w-full max-w-2xl bg-white border border-[#E5E7EB] rounded-[20px] p-6 shadow-sm mt-4 animate-in fade-in slide-in-from-bottom-4 duration-500 self-center">
-      <h3 className="text-[18px] font-semibold text-[#0A0A0A] mb-8 font-inter">
-        How are you feeling right now?
-      </h3>
-
-      {/* Energy Level */}
-      <div className="mb-10">
-        <label className="text-[14px] text-[#717182] font-medium block mb-4 font-inter">
-          Energy Level
-        </label>
-        <div className="flex justify-between items-center px-2 mb-3">
-          <img src="/images-dashboard/Energy%20Level%201.webp" alt="Low" className="w-8 h-8 object-contain" />
-          <img src="/images-dashboard/Energy%20Level%202.webp" alt="Medium" className="w-8 h-8 object-contain" />
-          <img src="/images-dashboard/Energy%20Level%203.webp" alt="High" className="w-8 h-8 object-contain" />
-        </div>
-        <input
-          type="range"
-          min="1" max="3" step="1"
-          value={energyLevel}
-          onChange={(e) => setEnergyLevel(Number(e.target.value))}
-          style={{ background: `linear-gradient(to right, #8A38F5 ${(energyLevel - 1) * 50}%, #E5E7EB ${(energyLevel - 1) * 50}%)` }}
-          className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-[#8A38F5] outline-none"
-        />
-      </div>
-
-      {/* Mood */}
-      <div className="mb-10">
-        <label className="text-[14px] text-[#717182] font-medium block mb-4 font-inter">
-          Mood
-        </label>
-        <div className="flex justify-between items-center px-2 mb-3">
-          <img src="/images-dashboard/Happy%20Icon.webp" alt="Happy" className="w-8 h-8 object-contain" />
-          <img src="/images-dashboard/Medium%20Icon.webp" alt="Medium" className="w-8 h-8 object-contain" />
-          <img src="/images-dashboard/Stressed%20Icon.webp" alt="Stressed" className="w-8 h-8 object-contain" />
-        </div>
-        <input
-          type="range"
-          min="1" max="3" step="1"
-          value={mood}
-          onChange={(e) => setMood(Number(e.target.value))}
-          style={{ background: `linear-gradient(to right, #8A38F5 ${(mood - 1) * 50}%, #E5E7EB ${(mood - 1) * 50}%)` }}
-          className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-[#8A38F5] outline-none"
-        />
-      </div>
-
-      {/* Available Time */}
-      <div className="mb-8 relative">
-        <label className="text-[14px] text-[#717182] font-medium block mb-3 font-inter">
-          Available Time Today
-        </label>
-        <div
-          onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className="w-full border border-[#E5E7EB] rounded-[10px] px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors bg-white"
-        >
-          <div className="flex items-center gap-3">
-            <svg className="w-[18px] h-[18px] text-[#717182]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-            <span className={`text-[15px] font-inter ${availableTime ? "text-[#0A0A0A]" : "text-[#717182]"}`}>
-              {availableTime || "Select Time Available"}
+      {isPrioritizer ? (
+        <div className="mb-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[#8A38F5]/10 px-3 py-1 text-[12px] font-semibold text-[#8A38F5]">
+              Prioritizer Review
+            </span>
+            <span className="rounded-full bg-[#F3F4F6] px-3 py-1 text-[12px] font-semibold text-[#111827]">
+              {prioritizerTasks.length} tasks
             </span>
           </div>
-          <svg className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-          </svg>
+          {prioritizerMessage && (
+            <p className="mt-3 text-[14px] text-[#111827]">
+              {prioritizerMessage}
+            </p>
+          )}
         </div>
+      ) : (
+        <h3 className="text-[18px] font-semibold text-[#0A0A0A] mb-8 font-inter">
+          How are you feeling right now?
+        </h3>
+      )}
 
-        {isDropdownOpen && (
-          <div className="absolute top-full left-0 w-full mt-2 bg-white border border-[#E5E7EB] rounded-[10px] shadow-lg z-50 py-2 animate-in fade-in slide-in-from-top-2">
-            {timeOptions.map((option) => (
-              <div
-                key={option}
-                onClick={() => {
-                  setAvailableTime(option);
-                  setIsDropdownOpen(false);
-                }}
-                className="px-4 py-3 hover:bg-gray-50 text-[14px] text-[#0A0A0A] cursor-pointer transition-colors"
-              >
-                {option}
+      {isPrioritizer && (
+        <div className="space-y-4 mb-6">
+          {prioritizerTasks.map((task) => (
+            <div
+              key={task.task_id}
+              className="rounded-2xl border border-[#E5E7EB] bg-[#F9FAFB] p-4"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[14px] font-semibold text-[#0A0A0A]">
+                    {task.title}
+                  </p>
+                  <p className="mt-1 text-[12px] text-[#6B7280]">
+                    Deadline: {task.deadline ?? "No deadline"} • Est. {task.estimated_minutes} min
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-[12px] font-semibold text-[#0A0A0A] border border-[#E5E7EB]">
+                  Urgency {task.urgency}
+                </span>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
 
-      <button
-        onClick={onGenerate}
-        disabled={!availableTime}
-        className="w-full bg-[#8A38F5] text-white py-4 rounded-[12px] font-semibold text-[15px] font-inter shadow-md hover:bg-[#7b32db] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
-      >
-        Generate My Schedule
-      </button>
+              {task.subtasks?.length > 0 && (
+                <ul className="mt-3 space-y-1 text-[12px] text-[#374151]">
+                  {task.subtasks.map((subtask, index) => (
+                    <li key={`${task.task_id}-sub-${index}`} className="flex gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 rounded-full bg-[#8A38F5]" />
+                      <span>{subtask}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#111827] border border-[#E5E7EB]">
+                  Importance: {getIntensityLabel(task.importance)}
+                </span>
+                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#111827] border border-[#E5E7EB]">
+                  Effort: {getIntensityLabel(task.effort)}
+                </span>
+                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#111827] border border-[#E5E7EB]">
+                  Energy fit: {getIntensityLabel(task.energy_fit)}
+                </span>
+                <span className="rounded-full bg-white px-3 py-1 text-[11px] font-semibold text-[#111827] border border-[#E5E7EB]">
+                  Window: {task.preferred_window}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isPrioritizer && (
+        <button
+          onClick={() => onConfirmPriorities?.(prioritizerTasks)}
+          disabled={!prioritizerTasks.length}
+          className="w-full bg-[#8A38F5] text-white py-4 rounded-[12px] font-semibold text-[15px] font-inter shadow-md hover:bg-[#7b32db] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+        >
+          Konfirmasi Prioritas
+        </button>
+      )}
+
+      {!isPrioritizer && (
+        <>
+          {/* Energy Level */}
+          <div className="mb-10">
+            <label className="text-[14px] text-[#717182] font-medium block mb-4 font-inter">
+              Energy Level
+            </label>
+            <div className="flex justify-between items-center px-2 mb-3">
+              <img src="/images-dashboard/Energy%20Level%201.webp" alt="Low" className="w-8 h-8 object-contain" />
+              <img src="/images-dashboard/Energy%20Level%202.webp" alt="Medium" className="w-8 h-8 object-contain" />
+              <img src="/images-dashboard/Energy%20Level%203.webp" alt="High" className="w-8 h-8 object-contain" />
+            </div>
+            <input
+              type="range"
+              min="1" max="3" step="1"
+              value={energyLevel}
+              onChange={(e) => setEnergyLevel(Number(e.target.value))}
+              style={{ background: `linear-gradient(to right, #8A38F5 ${(energyLevel - 1) * 50}%, #E5E7EB ${(energyLevel - 1) * 50}%)` }}
+              className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-[#8A38F5] outline-none"
+            />
+          </div>
+
+          {/* Mood */}
+          <div className="mb-10">
+            <label className="text-[14px] text-[#717182] font-medium block mb-4 font-inter">
+              Mood
+            </label>
+            <div className="flex justify-between items-center px-2 mb-3">
+              <img src="/images-dashboard/Happy%20Icon.webp" alt="Happy" className="w-8 h-8 object-contain" />
+              <img src="/images-dashboard/Medium%20Icon.webp" alt="Medium" className="w-8 h-8 object-contain" />
+              <img src="/images-dashboard/Stressed%20Icon.webp" alt="Stressed" className="w-8 h-8 object-contain" />
+            </div>
+            <input
+              type="range"
+              min="1" max="3" step="1"
+              value={mood}
+              onChange={(e) => setMood(Number(e.target.value))}
+              style={{ background: `linear-gradient(to right, #8A38F5 ${(mood - 1) * 50}%, #E5E7EB ${(mood - 1) * 50}%)` }}
+              className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-[#8A38F5] outline-none"
+            />
+          </div>
+
+          {/* Available Time */}
+          <div className="mb-8 relative">
+            <label className="text-[14px] text-[#717182] font-medium block mb-3 font-inter">
+              Available Time Today
+            </label>
+            <div
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="w-full border border-[#E5E7EB] rounded-[10px] px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors bg-white"
+            >
+              <div className="flex items-center gap-3">
+                <svg className="w-[18px] h-[18px] text-[#717182]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className={`text-[15px] font-inter ${availableTime ? "text-[#0A0A0A]" : "text-[#717182]"}`}>
+                  {availableTime || "Select Time Available"}
+                </span>
+              </div>
+              <svg className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+              </svg>
+            </div>
+
+            {isDropdownOpen && (
+              <div className="absolute top-full left-0 w-full mt-2 bg-white border border-[#E5E7EB] rounded-[10px] shadow-lg z-50 py-2 animate-in fade-in slide-in-from-top-2">
+                {timeOptions.map((option) => (
+                  <div
+                    key={option}
+                    onClick={() => {
+                      setAvailableTime(option);
+                      setIsDropdownOpen(false);
+                    }}
+                    className="px-4 py-3 hover:bg-gray-50 text-[14px] text-[#0A0A0A] cursor-pointer transition-colors"
+                  >
+                    {option}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={onGenerate}
+            disabled={!availableTime}
+            className="w-full bg-[#8A38F5] text-white py-4 rounded-[12px] font-semibold text-[15px] font-inter shadow-md hover:bg-[#7b32db] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+          >
+            Generate My Schedule
+          </button>
+        </>
+      )}
+
     </div>
   );
 }

@@ -6,7 +6,7 @@
 
 // Satu pesan dalam percakapan antara user dan AI
 export type Message = {
-  role: "user" | "ai";
+  role: "user" | "system";
   content: string;
 };
 

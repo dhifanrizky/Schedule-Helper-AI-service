@@ -8,7 +8,7 @@ import { Message } from "@/types";
 export function useDemoChat() {
   const [messages, setMessages] = useState<Message[]>([
     {
-      role: "ai",
+      role: "system",
       content: "Welcome to Schedule Helper! Write all your thoughts, tasks, and plans freely. I'll help you organize them.",
     },
   ]);
@@ -33,7 +33,7 @@ export function useDemoChat() {
 
     setTimeout(() => {
       const assistantMessage: Message = {
-        role: "ai",
+        role: "system",
         content: "Thanks for sharing! I can see you have several tasks. Let me ask a few questions to help prioritize. Which of these tasks has the most urgent deadline?",
       };
       setMessages((prev) => [...prev, assistantMessage]);
