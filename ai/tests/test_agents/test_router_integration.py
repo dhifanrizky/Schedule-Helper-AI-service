@@ -77,7 +77,7 @@ def test_router_with_real_llm_opt_in():
     assert isinstance(result, dict)
     assert "current_intent" in result
     assert "raw_tasks" in result
-    assert result["current_intent"] in {"stress", "overload", "manage_task", "schedule", None}
+    assert result["current_intent"] in {"stress", "overload", "manage_task", None}
     assert isinstance(result["raw_tasks"], list)
 
 
@@ -106,7 +106,6 @@ def test_router_saved_in_global_state_opt_in():
         "stress",
         "overload",
         "manage_task",
-        "schedule",
         None,
     }
     assert isinstance(final_state.get("raw_tasks"), list)

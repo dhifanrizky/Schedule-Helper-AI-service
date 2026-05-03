@@ -24,8 +24,7 @@ class DummyLLM:
 def test_make_router_sets_current_intent():
     intent_map = {
         "stress": ["stres"],
-        "manage_task": ["tugas"],
-        "schedule": ["jadwalkan"],
+        "manage_task": ["tugas"]
     }
     llm = DummyLLM(
         {

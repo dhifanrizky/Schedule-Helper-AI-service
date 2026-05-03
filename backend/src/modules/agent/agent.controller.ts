@@ -11,7 +11,6 @@ import { ChatDto } from './dto/chat.dto';
 import axios from 'axios';
 import { Readable } from 'stream';
 import { RouterType } from './types/agent-output.type';
-import { threadId } from 'worker_threads';
 
 @ApiTags('agent')
 // @ApiBearerAuth()
@@ -33,7 +32,7 @@ export class AgentController {
         message: body.message,
         ...(body.thread_id?.trim() ? { thread_id: body.thread_id.trim() } : {}),
       };
-      console.log(cleanPayload);
+      console.log(cleanPayload, body.approved_data);
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
@@ -44,18 +43,18 @@ export class AgentController {
 
       const fastApiResponse = await axios<Readable>({
         method: 'POST',
-        url: `${process.env.AI_API ?? 'http://localhost:8000'}${
-          isResume ? `/resume/${cleanPayload.thread_id}` : '/chat/stream'
-        }`,
+        url: isResume
+          ? `${process.env.AI_API ?? 'http://localhost:8000'}/resume/${cleanPayload.thread_id}/stream`
+          : `${process.env.AI_API ?? 'http://localhost:8000'}/chat/stream`,
         data: isResume
           ? {
               user_id: userId,
-              thread_id: cleanPayload.thread_id,
               approved_data: body.approved_data,
             }
           : {
               user_id: userId,
-              ...cleanPayload,
+              thread_id: cleanPayload.thread_id,
+              message: cleanPayload.message, // ← ensure message is NOT undefined
             },
         responseType: 'stream',
       });

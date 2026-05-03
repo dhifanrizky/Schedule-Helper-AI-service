@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 CategoryType = Literal["serius", "santai", "biasa", "lainnya"]
 PreferredWindow = Literal["pagi", "siang", "sore", "malam", "bebas"]
-IntentType = Literal["stress", "overload", "manage_task", "schedule"]
+IntentType = Literal["stress", "overload", "manage_task"]
 class ScheduleItem(TypedDict):
     task_id: str
     task: str

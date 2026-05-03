@@ -34,7 +34,7 @@ class _FakeGraph:
 
     async def astream(self, _input, *, config=None, stream_mode=None):
         self.last_stream_mode = stream_mode
-        yield ("updates", {"router": {"current_intent": "schedule"}})
+        yield ("updates", {"router": {"current_intent": "manage_task"}})
         yield ("messages", (_FakeChunk("Halo"), {"langgraph_node": "counselor"}))
         yield ("messages", (_FakeChunk(" dunia"), {"langgraph_node": "counselor"}))
         yield ("updates", {"scheduler": {"final_message": "Selesai"}})
