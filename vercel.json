@@ -2,12 +2,12 @@
   "version": 2,
   "builds": [
     {
-      "src": "dist/src/main.js",
+      "src": "backend/dist/src/main.js",
       "use": "@vercel/node",
       "config": {
         "includeFiles": [
-          "node_modules/.prisma/client/**",
-          "node_modules/swagger-ui-dist/**"
+          "backend/node_modules/.prisma/client/**",
+          "backend/node_modules/swagger-ui-dist/**"
         ]
       }
     }
@@ -15,7 +15,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "dist/src/main.js"
+      "dest": "backend/dist/src/main.js"
     }
   ]
 }
