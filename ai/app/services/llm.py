@@ -9,7 +9,7 @@ def get_llm(provider: str, model: str, temperature: float = 0.0, **kwargs):
     """
     if provider == "openai":
         if not settings.openai_api_key:
-            raise ValueError("OPENAI_API_KEY tidak ditemukan di .env")
+            raise ValueError("OPENAI_API_KEY tidak ditemukan di environment (.env atau secrets)")
         return ChatOpenAI(
             api_key=settings.openai_api_key, # type: ignore
             model=model,
@@ -18,7 +18,7 @@ def get_llm(provider: str, model: str, temperature: float = 0.0, **kwargs):
         
     elif provider == "groq":
         if not settings.groq_api_key:
-            raise ValueError("GROQ_API_KEY tidak ditemukan di .env")
+            raise ValueError("GROQ_API_KEY tidak ditemukan di environment (.env atau secrets)")
         return ChatGroq(
             api_key=settings.groq_api_key, # type: ignore
             model=model,
@@ -28,7 +28,7 @@ def get_llm(provider: str, model: str, temperature: float = 0.0, **kwargs):
     
     elif provider == "gemini":
         if not settings.gemini_api_key:
-            raise ValueError("GEMINI_API_KEY tidak ditemukan di .env")
+            raise ValueError("GEMINI_API_KEY tidak ditemukan di environment (.env atau secrets)")
         return ChatGoogleGenerativeAI(
             api_key=settings.gemini_api_key, # type: ignore
             model=model,

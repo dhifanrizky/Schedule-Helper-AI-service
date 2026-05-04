@@ -7,9 +7,14 @@ import { Strategy, VerifyCallback } from 'passport-google-oauth20';
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(config: ConfigService) {
     super({
-      clientID: config.get<string>('GOOGLE_CLIENT_ID') || 'placeholder-client-id',
-      clientSecret: config.get<string>('GOOGLE_CLIENT_SECRET') || 'placeholder-client-secret',
-      callbackURL: config.get<string>('GOOGLE_CALLBACK_URL') || 'http://localhost:3000/api/auth/google/callback',
+      clientID:
+        config.get<string>('GOOGLE_CLIENT_ID') || 'placeholder-client-id',
+      clientSecret:
+        config.get<string>('GOOGLE_CLIENT_SECRET') ||
+        'placeholder-client-secret',
+      callbackURL:
+        config.get<string>('GOOGLE_CALLBACK_URL') ||
+        'http://localhost:3000/api/auth/google/callback',
       scope: ['email', 'profile'],
       // Uncomment nanti kalau butuh refresh token untuk Google Calendar API
       // accessType: 'offline',

@@ -1,13 +1,23 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from typing import Optional
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(extra="ignore")
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # API Keys (Bisa diisi mana yang mau dipakai)
-    openai_api_key: Optional[str] = None
-    groq_api_key: Optional[str] = None
-    gemini_api_key:Optional[str] = None
+    openai_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("OPENAI_API_KEY", "OPENAI_KEY"),
+    )
+    groq_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("GROQ_API_KEY", "GROQ_API_TOKEN"),
+    )
+    gemini_api_key: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("GEMINI_API_KEY", "GOOGLE_API_KEY"),
+    )
 
     # Redis
     redis_url: str = "redis://localhost:6379"
