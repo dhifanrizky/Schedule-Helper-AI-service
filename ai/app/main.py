@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 from app.api.routes import chat, resume, state
 from app.dependencies import clear_graph_cache, get_graph
 from app.config import settings
@@ -41,3 +42,7 @@ app.include_router(state.router)
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+@app.head('/')
+async def head_root():
+    return PlainTextResponse("")
