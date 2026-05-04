@@ -143,10 +143,10 @@ export function QuestionnaireCard({
             </div>
             <input
               type="range"
-              min="1" max="3" step="1"
+              min="0" max="100" step="1"
               value={energyLevel}
               onChange={(e) => setEnergyLevel(Number(e.target.value))}
-              style={{ background: `linear-gradient(to right, #8A38F5 ${(energyLevel - 1) * 50}%, #E5E7EB ${(energyLevel - 1) * 50}%)` }}
+              style={{ background: `linear-gradient(to right, #8A38F5 ${energyLevel}%, #E5E7EB ${energyLevel}%)` }}
               className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-[#8A38F5] outline-none"
             />
           </div>
@@ -163,10 +163,10 @@ export function QuestionnaireCard({
             </div>
             <input
               type="range"
-              min="1" max="3" step="1"
+              min="0" max="100" step="1"
               value={mood}
               onChange={(e) => setMood(Number(e.target.value))}
-              style={{ background: `linear-gradient(to right, #8A38F5 ${(mood - 1) * 50}%, #E5E7EB ${(mood - 1) * 50}%)` }}
+              style={{ background: `linear-gradient(to right, #8A38F5 ${mood}%, #E5E7EB ${mood}%)` }}
               className="w-full h-2 rounded-lg appearance-none cursor-pointer accent-[#8A38F5] outline-none"
             />
           </div>

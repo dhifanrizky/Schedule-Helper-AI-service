@@ -38,7 +38,7 @@ export type ScheduleItem = {
 // Payload yang dikirim saat user menekan "Generate My Schedule"
 // === INTEGRASI BE: Kirim ke POST /api/schedules/generate ===
 export type QuestionnairePayload = {
-  energyLevel: number; // 1 = Rendah, 2 = Sedang, 3 = Tinggi
-  mood: number;        // 1 = Happy, 2 = Netral, 3 = Stres
+  energyLevel: number; // 0 - 100 (0 = Rendah, 100 = Tinggi)
+  mood: number;        // 0 - 100 (0 = Happy, 100 = Stres)
   availableTime: string; // Contoh: "2 - 4 Hours"
 };
