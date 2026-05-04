@@ -10,6 +10,7 @@ ROUTING_MAP: dict[str, str] = {
     "stress":      "counselor",
     "overload":    "counselor",
     "manage_task": "prioritizer",
+    "schedule":    "prioritizer",
     "general":     END,
 }
 
