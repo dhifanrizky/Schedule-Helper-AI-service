@@ -1,4 +1,4 @@
-﻿import { NextRequest } from "next/server";
+import { NextRequest } from "next/server";
 export const config = {
   api: {
     responseLimit: false, // penting untuk streaming
@@ -144,9 +144,15 @@ export async function POST(req: NextRequest) {
   const body = (await req.json()) as Record<string, unknown>;
   const payload = buildBackendPayload(body);
 
-  const response = await fetch("http://localhost:3000/api/agent/stream", {
+  const authHeader = req.headers.get("Authorization");
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authHeader) {
+    headers["Authorization"] = authHeader;
+  }
+
+  const response = await fetch(process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/agent/stream` : "http://localhost:3000/api/agent/stream", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify(payload),
   });
 

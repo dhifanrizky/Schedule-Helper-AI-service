@@ -9,6 +9,25 @@ services:
       POSTGRES_DB: nest
     networks:
       - schedule-helper
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:123@dev-db:5432/nest?schema=public
+      - JWT_SECRET=supersecretkey
+      - JWT_EXPIRES_IN=1d
+      - AI_API=http://host.docker.internal:8000
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      - dev-db
+    networks:
+      - schedule-helper
   test-db:
     image: postgres:18
     ports:

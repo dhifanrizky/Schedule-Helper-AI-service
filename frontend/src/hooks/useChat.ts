@@ -26,6 +26,11 @@ export function useChat(userId?: string) {
   } = useAiChat({
     transport: new TextStreamChatTransport({
       api: "/api/chat/stream",
+      headers: {
+        Authorization: typeof window !== "undefined" && sessionStorage.getItem("app_token")
+          ? `Bearer ${sessionStorage.getItem("app_token")}`
+          : "",
+      },
       body: () => ({ user_id: userId ?? "anonymous" }),
     }),
   });

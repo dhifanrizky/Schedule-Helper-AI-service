@@ -1,86 +1,114 @@
 import { UserProfile } from "@/types";
-import { mockUserProfile } from "@/data/mockData";
 
-// =============================================================
-// AUTH SERVICE: Mengelola komunikasi API terkait Otentikasi
-// =============================================================
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
 
 export const authService = {
   /**
-   * Mengambil data profil user yang sedang login.
-   * Saat ini masih mensimulasikan delay network dan mengambil dari sessionStorage/mock.
-   * === INTEGRASI BE: Ganti dengan fetch('/api/users/me') ===
+   * Mengambil data profil user yang sedang login dari Backend.
    */
   async getCurrentUser(): Promise<UserProfile> {
-    // 1. Cek Cache di SessionStorage
-    const storedUser = sessionStorage.getItem("app_user");
-    if (storedUser) {
-      return JSON.parse(storedUser);
+    const token = sessionStorage.getItem("app_token");
+    if (!token) {
+      throw new Error("No token found");
     }
 
-    // 2. Simulasi Delay Network (2.5 detik)
-    await new Promise((resolve) => setTimeout(resolve, 2500));
+    try {
+      const response = await fetch(`${API_URL}/users/me`, {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json"
+        }
+      });
 
-    // 3. Kembalikan Mock Data (Ganti dengan real API call nanti)
-    const userData = mockUserProfile;
+      if (!response.ok) {
+        throw new Error("Failed to fetch user profile");
+      }
 
-    // Simpan ke cache
-    sessionStorage.setItem("app_user", JSON.stringify(userData));
-    return userData;
+      const data = await response.json();
+      const userData: UserProfile = {
+        name: data.name,
+        email: data.email
+      };
+      
+      this.saveUserToSession(userData);
+      return userData;
+    } catch (error) {
+      this.logout(); // Jika token invalid/expired, bersihkan session
+      throw error;
+    }
   },
 
   /**
    * Menangani proses logout.
-   * Membersihkan data sesi dan token.
-   * === INTEGRASI BE: Tambahkan panggilan POST /api/auth/logout ===
    */
   async logout(): Promise<void> {
-    // 1. Simulasi Delay
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    // 2. Bersihkan SessionStorage
+    sessionStorage.removeItem("app_token");
     sessionStorage.removeItem("app_user");
     sessionStorage.removeItem("chat_messages");
-
-    // 3. Redirect ke Landing Page dilakukan di level komponen/hook
+    
+    try {
+      await fetch(`${API_URL}/auth/logout`, { method: "POST" });
+    } catch (e) {
+      // Abaikan jika API gagal saat logout
+    }
   },
 
   /**
    * Menangani proses login.
-   * === INTEGRASI BE: POST /api/auth/login ===
    */
   async login(email: string, password: string): Promise<void> {
-    // 1. Simulasi Delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email, password })
+    });
 
-    // 2. Simulasi Login Berhasil (Selalu berhasil untuk demo)
-    const userData: UserProfile = {
-      name: "Dhifan Rizky", // Contoh nama dari DB
-      email: email
-    };
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Login failed");
+    }
 
-    this.saveUserToSession(userData);
+    const data = await response.json();
+    if (data.access_token) {
+      sessionStorage.setItem("app_token", data.access_token);
+      await this.getCurrentUser();
+    } else {
+      throw new Error("Token not found in response");
+    }
   },
 
   /**
    * Menangani proses registrasi akun baru.
-   * === INTEGRASI BE: POST /api/auth/register ===
    */
   async register(name: string, email: string, password: string): Promise<void> {
-    // 1. Simulasi Delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const response = await fetch(`${API_URL}/auth/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ name, email, password })
+    });
 
-    // 2. Simulasi Registrasi Berhasil
-    const userData: UserProfile = {
-      name: name,
-      email: email
-    };
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "Registration failed");
+    }
 
-    this.saveUserToSession(userData);
+    const data = await response.json();
+    if (data.access_token) {
+      sessionStorage.setItem("app_token", data.access_token);
+      const userData: UserProfile = { name, email };
+      this.saveUserToSession(userData);
+    } else {
+      throw new Error("Token not found in response");
+    }
   },
 
   /**
-   * Menyimpan data user secara manual ke storage (misal setelah login/register).
+   * Menyimpan data user secara manual ke storage.
    */
   saveUserToSession(user: UserProfile): void {
     sessionStorage.setItem("app_user", JSON.stringify(user));
