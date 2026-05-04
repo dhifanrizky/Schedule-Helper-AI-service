@@ -8,11 +8,6 @@ import { TypingIndicator } from "@/components/dashboard/TypingIndicator";
 
 const inter = Inter({ subsets: ["latin"] });
 
-/**
- * DEMO PAGE - FINAL VERSION
- * Desain disesuaikan 100% dengan Gambar 1 (Figma).
- * Menggunakan aset .webp untuk Ikon Back dan Tombol Send.
- */
 export default function DemoPage() {
   const {
     messages,
@@ -28,7 +23,7 @@ export default function DemoPage() {
   return (
     <div className={`flex flex-col h-screen bg-white ${inter.className}`}>
       
-      {/* 1. HEADER (Sesuai Gambar 1) */}
+      {/* HEADER */}
       <header className="px-8 py-5 flex justify-between items-center border-b border-gray-100 shrink-0">
         <Link
           href="/"
@@ -49,14 +44,14 @@ export default function DemoPage() {
         </div>
       </header>
 
-      {/* 2. MAIN CHAT AREA (Bubble Tanpa Avatar - Sesuai Gambar 1) */}
+      {/* MAIN CHAT AREA */}
       <main className="flex-1 overflow-y-auto p-6 md:p-12 flex justify-center">
         <div className="w-full max-w-4xl flex flex-col gap-8">
           {messages.map((msg, idx) => (
             <ChatMessage 
               key={idx} 
               message={msg} 
-              showAvatar={false} // MENYEMBUNYIKAN IKON AI SESUAI FIGMA
+              showAvatar={false} 
             />
           ))}
 
@@ -71,7 +66,7 @@ export default function DemoPage() {
         </div>
       </main>
 
-      {/* 3. FOOTER (Input Area & Limit Reached - Sesuai Gambar 1) */}
+      {/* FOOTER */}
       <footer className="p-8 flex justify-center border-t border-gray-100 shrink-0 bg-[#F9FAFB]">
         {isLimitReached ? (
           <div className="bg-white border border-[#E5E7EB] rounded-[20px] p-10 w-full max-w-4xl text-center shadow-sm flex flex-col items-center">

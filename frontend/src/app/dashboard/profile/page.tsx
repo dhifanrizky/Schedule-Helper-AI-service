@@ -30,7 +30,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* List Informasi (1 Kolom Sesuai Gambar 3) */}
+          {/* List Informasi */}
           <div className="flex flex-col gap-5">
             <ProfileField
               label="Name"
