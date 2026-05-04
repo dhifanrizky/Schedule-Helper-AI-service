@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { RequestMethod, ValidationPipe } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { AppModule } from './app.module.js';
 
@@ -9,8 +9,10 @@ async function bootstrap() {
   // Enable CORS for frontend
   app.enableCors();
 
-  // Set global prefix
-  app.setGlobalPrefix('api');
+  // Set global prefix, but keep root health endpoint on '/'
+  app.setGlobalPrefix('api', {
+    exclude: [{ path: '', method: RequestMethod.GET }],
+  });
 
   // Global validation pipe — whitelist strips unknown properties
   app.useGlobalPipes(
