@@ -27,6 +27,13 @@ jobs:
         working-directory: backend
         run: vercel pull --yes --environment=production --token ${{ secrets.VERCEL_TOKEN }}
 
+      - name: Migrate database
+        working-directory: backend
+        env:
+          DATABASE_URL_NEON: ${{ secrets.DATABASE_URL_NEON }}
+          NODE_ENV: production
+        run: npx prisma migrate deploy
+
       - name: Build backend
         working-directory: backend
         run: |
