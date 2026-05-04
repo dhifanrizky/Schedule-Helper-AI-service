@@ -1,0 +1,36 @@
+name: Deploy Backend to Vercel
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel
+
+      - name: Pull Vercel environment
+        working-directory: backend
+        run: vercel pull --yes --environment=production --token ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build backend
+        working-directory: backend
+        run: npm ci && npm run build
+
+      - name: Deploy backend
+        working-directory: backend
+        run: vercel deploy --prebuilt --prod --token ${{ secrets.VERCEL_TOKEN }}
