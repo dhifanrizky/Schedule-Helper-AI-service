@@ -2,11 +2,13 @@ import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service.js';
 import { RegisterDto, LoginDto } from './dto/auth.dto.js';
+import { UseGuards, Req, Get } from '@nestjs/common';
+import { GoogleGuard } from './guard/google.guard.js';
 
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(private readonly authService: AuthService) { }
 
   @Post('register')
   @ApiOperation({ summary: 'Register a new user' })
@@ -33,7 +35,26 @@ export class AuthController {
   @ApiResponse({ status: 200, description: 'Logout successful' })
   logout() {
     // JWT is stateless on the backend. True logout is clearing the token on the frontend.
-    // This endpoint exists to satisfy frontend expectations.
+    // This endpoint exists to frontend expectations.
     return { message: 'Logged out successfully' };
+  }
+
+  @Get('google')
+  @UseGuards(GoogleGuard)
+  @ApiOperation({ summary: 'Login with Google OAuth2' })
+  googleAuth() {
+    // This endpoint will redirect the user to the Google login page.
+  }
+
+  @Get('google/callback')
+  @UseGuards(GoogleGuard)
+  @ApiOperation({ summary: 'Google OAuth2 callback URL' })
+  async googleAuthRedirect(@Req() req: any) {
+    // This endpoint handles the callback from Google
+    // req.user will contain the google profile returned by GoogleStrategy
+    const result = await this.authService.googleLogin(req);
+
+    // For API testing, we return it as JSON
+    return result;
   }
 }

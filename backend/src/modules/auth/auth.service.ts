@@ -57,6 +57,29 @@ export class AuthService {
     return this.signToken(user.id, user.email);
   }
 
+  async googleLogin(req: any) {
+    if (!req.user) {
+      throw new ForbiddenException('No user from google');
+    }
+
+    let user = await this.prisma.user.findUnique({
+      where: { email: req.user.email },
+    });
+
+    if (!user) {
+      const dummyHash = await argon2.hash(Math.random().toString(36).substring(7));
+      user = await this.prisma.user.create({
+        data: {
+          email: req.user.email,
+          name: req.user.name,
+          hash: dummyHash,
+        },
+      });
+    }
+
+    return this.signToken(user.id, user.email);
+  }
+
   async signToken(
     userId: string,
     email: string,
