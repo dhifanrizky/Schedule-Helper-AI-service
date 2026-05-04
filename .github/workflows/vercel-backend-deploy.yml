@@ -29,7 +29,10 @@ jobs:
 
       - name: Build backend
         working-directory: backend
-        run: vercel build --prod --token ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          npm ci
+          npm run build
+          vercel build --prod --token ${{ secrets.VERCEL_TOKEN }}
 
       - name: Deploy backend
         working-directory: backend
