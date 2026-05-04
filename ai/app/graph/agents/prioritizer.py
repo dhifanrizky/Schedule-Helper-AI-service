@@ -145,29 +145,66 @@ Preferred window wajib salah satu:
 - bebas
 """
 
+def apply_hitl_edits(
+    hitl_result: dict,
+    task_breakdown: list[TaskBreakdown],
+    proposed_schedule: list[ScheduleItem],
+) -> tuple[list[TaskBreakdown], list[ScheduleItem]]:
+    """
+    Memastikan hasil edit dari user benar-benar dipakai.
+
+    Aturan:
+    - Jika user mengirim tasks hasil edit, pakai tasks itu.
+    - Jika tasks diedit tapi proposed_schedule tidak dikirim,
+      bangun ulang proposed_schedule dari tasks edit.
+    - Jika user mengirim proposed_schedule edit, pakai itu.
+    - Jika tidak ada edit, pakai hasil awal.
+    """
+    edited_tasks = hitl_result.get("tasks")
+    edited_schedule = hitl_result.get("proposed_schedule")
+
+    final_tasks = edited_tasks or task_breakdown
+
+    if edited_tasks and not edited_schedule:
+        final_schedule = build_proposed_schedule(final_tasks)
+    else:
+        final_schedule = edited_schedule or proposed_schedule
+
+    return final_tasks, final_schedule
 
 def make_prioritizer(llm: BaseChatModel):
     structured_llm = llm.with_structured_output(LLMTaskBreakdownResponse)
 
     def run(state: AppState) -> dict:
-        raw_tasks = get_raw_tasks(state)
+        previous_status = state.get("hitl_status")
+        existing_tasks = state.get("task_breakdown") or []
+        existing_schedule = state.get("proposed_schedule") or []
 
-        if not raw_tasks:
-            return {
-                **ai_msg("Aku belum menemukan tugas yang bisa diprioritaskan."),
-                "task_breakdown": [],
-                "proposed_schedule": [],
-                "error_message": "raw_tasks kosong.",
-            }
+        # Kalau sebelumnya user reject/edit, jangan mulai ulang dari raw_tasks.
+        # Pakai hasil task_breakdown dan proposed_schedule terakhir.
+        if previous_status == "rejected" and existing_tasks:
+            task_breakdown = existing_tasks
+            proposed_schedule = existing_schedule or build_proposed_schedule(task_breakdown)
 
-        try:
-            task_breakdown = build_task_breakdown_with_llm(raw_tasks, structured_llm)
-            print("[Agent 3] LLM prioritizer berhasil dipakai.")
-        except Exception as err:
-            print(f"[Agent 3] LLM prioritizer gagal, fallback dipakai: {type(err).__name__}: {err}")
-            task_breakdown = build_task_breakdown_rule_based(raw_tasks)
+        else:
+            raw_tasks = get_raw_tasks(state)
 
-        proposed_schedule = build_proposed_schedule(task_breakdown)
+            if not raw_tasks:
+                return {
+                    **ai_msg("Aku belum menemukan tugas yang bisa diprioritaskan."),
+                    "task_breakdown": [],
+                    "proposed_schedule": [],
+                    "error_message": "raw_tasks kosong.",
+                }
+
+            try:
+                task_breakdown = build_task_breakdown_with_llm(raw_tasks, structured_llm)
+                print("[Agent 3] LLM prioritizer berhasil dipakai.")
+            except Exception as err:
+                print(f"[Agent 3] LLM prioritizer gagal, fallback dipakai: {type(err).__name__}: {err}")
+                task_breakdown = build_task_breakdown_rule_based(raw_tasks)
+
+            proposed_schedule = build_proposed_schedule(task_breakdown)
 
         hitl_result = interrupt({
             "type": "task_review",
@@ -177,8 +214,12 @@ def make_prioritizer(llm: BaseChatModel):
         }) or {}
 
         approved = bool(hitl_result.get("approved"))
-        final_tasks = hitl_result.get("tasks") or task_breakdown
-        final_schedule = hitl_result.get("proposed_schedule") or proposed_schedule
+
+        final_tasks, final_schedule = apply_hitl_edits(
+            hitl_result=hitl_result,
+            task_breakdown=task_breakdown,
+            proposed_schedule=proposed_schedule,
+        )
 
         if not approved:
             return {
@@ -467,8 +508,14 @@ def build_task_breakdown_rule_based(raw_tasks: list[RawTask]) -> list[TaskBreakd
 
 def build_basic_subtasks(task_text: str) -> list[str]:
     text = task_text.strip()
+    lower_text = text.lower()
 
-    if any(k in text.lower() for k in ["belum jelas", "ga jelas", "tidak jelas", "bingung"]):
+    if any(k in lower_text for k in ["meeting", "rapat", "ketemu", "janji", "kelas", "kuliah"]):
+        return [
+            text
+        ]
+
+    if any(k in lower_text for k in ["belum jelas", "ga jelas", "tidak jelas", "bingung"]):
         return [
             "Klarifikasi detail tugas yang belum jelas",
             "Tentukan bagian yang paling mendesak",
@@ -476,9 +523,9 @@ def build_basic_subtasks(task_text: str) -> list[str]:
         ]
 
     return [
-        f"Pahami kebutuhan: {text}",
-        "Pecah pekerjaan menjadi langkah kecil",
-        "Kerjakan bagian prioritas pertama",
+        f"Mulai kerjakan: {text}",
+        "Lanjutkan bagian utama yang paling penting",
+        "Cek hasil dan rapikan sebelum selesai",
     ]
 
 
@@ -494,16 +541,47 @@ def minutes_to_iso(total_minutes: int, base_date: str) -> str:
 
 def build_proposed_schedule(task_breakdown: list[TaskBreakdown]) -> list[ScheduleItem]:
     proposed_schedule: list[ScheduleItem] = []
+
+    current_date = datetime.now().strftime("%Y-%m-%d")
     current_time = 9 * 60
-    base_date = datetime.now().strftime("%Y-%m-%d")
 
     for item in task_breakdown:
         preferred_window = item.get("preferred_window", "bebas")
         preferred_start = WINDOW_START.get(preferred_window, 9 * 60)
-        start_time_minutes = max(current_time, preferred_start)
 
-        subtasks = item.get("subtasks") or []
-        main_task = subtasks[0] if subtasks else item["title"]
+        deadline = item.get("deadline")
+        deadline_dt = None
+
+        if deadline:
+            try:
+                deadline_dt = datetime.fromisoformat(deadline)
+            except ValueError:
+                deadline_dt = None
+
+        if deadline_dt:
+            base_date = deadline_dt.strftime("%Y-%m-%d")
+            deadline_minutes = deadline_dt.hour * 60 + deadline_dt.minute
+
+            # Jika tanggal berubah, reset jam kerja ke awal window.
+            if base_date != current_date:
+                current_date = base_date
+                current_time = preferred_start
+
+            # Deadline jam 23:59 berarti hanya batas akhir hari,
+            # bukan berarti task harus dimulai jam 23:59.
+            is_end_of_day_deadline = deadline_dt.hour == 23 and deadline_dt.minute >= 55
+
+            if is_end_of_day_deadline:
+                start_time_minutes = max(current_time, preferred_start)
+            else:
+                # Untuk event fixed-time seperti meeting jam 09:00,
+                # gunakan jam deadline sebagai start time.
+                start_time_minutes = max(current_time, deadline_minutes, preferred_start)
+        else:
+            base_date = current_date
+            start_time_minutes = max(current_time, preferred_start)
+
+        main_task = item["title"]
 
         proposed_schedule.append({
             "task_id": item["task_id"],
@@ -514,7 +592,6 @@ def build_proposed_schedule(task_breakdown: list[TaskBreakdown]) -> list[Schedul
             "category": item["category"],
         })
 
-        # Beri jeda 10 menit antar task agar jadwal tidak terlalu mepet.
         current_time = start_time_minutes + int(item["estimated_minutes"]) + 10
 
     return proposed_schedule
