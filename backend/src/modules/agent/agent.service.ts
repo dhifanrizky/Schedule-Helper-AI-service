@@ -9,7 +9,7 @@ import {
   BadRequestException,
   InternalServerErrorException,
 } from '@nestjs/common';
-import { Prisma } from '../../../generated/prisma/client';
+import { Prisma } from '@prisma/client';
 import { RawTask } from './types/agent-output.type';
 
 @Injectable()
