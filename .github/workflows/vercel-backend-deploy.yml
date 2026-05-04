@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Vercel CLI
         run: npm install -g vercel
@@ -26,6 +26,10 @@ jobs:
       - name: Pull Vercel environment
         working-directory: backend
         run: vercel pull --yes --environment=production --token ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: npm ci
 
       - name: Migrate database
         working-directory: backend
@@ -37,7 +41,6 @@ jobs:
       - name: Build backend
         working-directory: backend
         run: |
-          npm ci
           npm run build
           vercel build --prod --token ${{ secrets.VERCEL_TOKEN }}
 
