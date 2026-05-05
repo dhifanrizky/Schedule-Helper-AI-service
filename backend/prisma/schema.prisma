@@ -13,6 +13,10 @@ model User {
   email     String   @unique
   hash      String
   name      String?
+  
+  googleAccessToken  String? @db.Text
+  googleRefreshToken String? @db.Text
+  
   createdAt DateTime @default(now())
 
   sessions Session[]
@@ -72,6 +76,7 @@ model Task {
   deadline         DateTime?
   startTime        DateTime? // Kapan jadwal ini akan dieksekusi
   status           String    @default("pending") // pending, scheduled, completed
+  googleEventId    String?   @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

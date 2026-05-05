@@ -73,6 +73,17 @@ export class AuthService {
           email: req.user.email,
           name: req.user.name,
           hash: dummyHash,
+          googleAccessToken: req.user.accessToken,
+          googleRefreshToken: req.user.refreshToken,
+        },
+      });
+    } else {
+      // Update tokens if user already exists
+      user = await this.prisma.user.update({
+        where: { email: req.user.email },
+        data: {
+          googleAccessToken: req.user.accessToken,
+          googleRefreshToken: req.user.refreshToken || user.googleRefreshToken,
         },
       });
     }

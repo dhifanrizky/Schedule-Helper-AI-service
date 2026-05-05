@@ -15,10 +15,10 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       callbackURL:
         config.get<string>('GOOGLE_CALLBACK_URL') ||
         'http://localhost:3000/api/auth/google/callback',
-      scope: ['email', 'profile'],
-      // Uncomment nanti kalau butuh refresh token untuk Google Calendar API
-      // accessType: 'offline',
-      // prompt: 'consent',
+      scope: ['email', 'profile', 'https://www.googleapis.com/auth/calendar'],
+      // Mendapatkan refresh token agar backend bisa sync saat user offline
+      accessType: 'offline',
+      prompt: 'consent',
     });
   }
 
