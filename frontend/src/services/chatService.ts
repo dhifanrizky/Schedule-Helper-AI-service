@@ -25,7 +25,7 @@ export const chatService = {
     }
 
     return {
-      role: "ai",
+      role: "system",
       content: reply,
     };
   },

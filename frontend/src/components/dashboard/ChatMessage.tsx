@@ -9,7 +9,7 @@ interface ChatMessageProps {
  * Komponen Pesan Chat.
  */
 export function ChatMessage({ message, showAvatar = true }: ChatMessageProps) {
-  const isAi = message.role === "ai";
+  const isAi = message.role === "system";
 
   return (
     <div
