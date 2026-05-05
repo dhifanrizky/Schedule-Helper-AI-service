@@ -1,18 +1,18 @@
-FROM node:18
+FROM node:22
 
 WORKDIR /app
 
 # Copy file konfigurasi dependency
 COPY package*.json ./
 
-# Install semua dependency
+# Copy schema prisma agar postinstall `prisma generate` tidak error
+COPY prisma ./prisma/
+
+# Install semua dependency (postinstall akan otomatis menjalankan prisma generate)
 RUN npm install
 
 # Copy seluruh kode sumber
 COPY . .
-
-# Generate Prisma Client di dalam container
-RUN npx prisma generate
 
 # Buka port untuk backend
 EXPOSE 3000
