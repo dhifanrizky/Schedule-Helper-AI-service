@@ -1,4 +1,5 @@
-// Reads from process.env; the CI pipeline should inject required env vars.
+// Memuat file .env secara manual agar Prisma CLI bisa membaca DATABASE_URL
+import 'dotenv/config';
 import { defineConfig } from 'prisma/config';
 
 export default defineConfig({
