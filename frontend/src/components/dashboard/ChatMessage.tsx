@@ -2,14 +2,31 @@ import { Message } from "@/types";
 
 interface ChatMessageProps {
   message: Message;
-  showAvatar?: boolean; // Tambahkan prop opsional
+  showAvatar?: boolean;
+  payload?: { draft: string; message: string };
 }
 
 /**
  * Komponen Pesan Chat.
  */
-export function ChatMessage({ message, showAvatar = true }: ChatMessageProps) {
+export function ChatMessage({ message, payload, showAvatar = true }: ChatMessageProps) {
   const isAi = message.role === "system";
+  const displayedContent = (() => {
+    if (payload) return payload.draft;
+    if (message.role !== "user") return message.content;
+
+    const marker = "USER MESSAGES:";
+    if (message.content.includes(marker)) {
+      return message.content.split(marker)[1]?.trim() ?? "";
+    }
+
+    if (message.content.startsWith("USER STATE:")) {
+      const parts = message.content.split("\n");
+      return parts.slice(1).join("\n").trim();
+    }
+
+    return message.content;
+  })();
 
   return (
     <div
@@ -23,12 +40,12 @@ export function ChatMessage({ message, showAvatar = true }: ChatMessageProps) {
       )}
       <div
         className={`max-w-[80%] rounded-[20px] px-6 py-4 text-[15px] leading-relaxed shadow-sm ${!isAi
-            ? "bg-[#B597FF] text-white rounded-tr-none"
-            : "bg-[#FFFFFF] text-[#0A0A0A] border border-[#E5E7EB] rounded-tl-none"
+          ? "bg-[#9b75fd] text-white rounded-tr-none"
+          : "bg-[#FFFFFF] text-[#0A0A0A] border border-[#E5E7EB] rounded-tl-none"
           }`}
         style={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
       >
-        {message.content}
+        {displayedContent}
       </div>
     </div>
   );

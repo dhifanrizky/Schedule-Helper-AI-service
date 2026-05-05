@@ -1,3 +1,5 @@
+import 'dotenv/config';
+
 // Reads from process.env; the CI pipeline should inject required env vars.
 import { defineConfig } from 'prisma/config';
 

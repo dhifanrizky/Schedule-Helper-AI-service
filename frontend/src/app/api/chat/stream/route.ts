@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 export const config = {
   api: {
-    responseLimit: false, // penting untuk streaming
+    responseLimit: false, 
   },
 };
 type IncomingMessage = {

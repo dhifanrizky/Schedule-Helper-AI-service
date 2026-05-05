@@ -2,7 +2,8 @@
 
 import { useState, useRef, FormEvent, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Message } from "@/types";
+import { Message, QuestionnairePayload } from "@/types";
+import { buildUserContent } from "@/utils/chatPayload";
 
 const THREAD_ID_PATTERN = /\x00THREAD_ID:([^\x00]+)\x00/;
 const EXECUTION_COMPLETE_PATTERN = /\x00EXECUTION_COMPLETE:([\s\S]+?)\x00/;
@@ -15,20 +16,26 @@ export type HitlPayload =
       type: "task_review";
       tasks: PrioritizerTask[];
       message: string;
+      proposed_schedule: ProposedSchedule[];
     };
 
+export type ProposedSchedule = {
+  task_id: string;
+  task: string;
+  priority: number;
+  start_time: string;
+  duration_minutes: number;
+  category: string;
+};
 export type PrioritizerTask = {
   task_id: string;
   title: string;
   subtasks: string[];
   estimated_minutes: number;
+  priority: number;
   deadline: string | null;
   category: string;
   preferred_window: string;
-  urgency: number;
-  importance: number;
-  effort: number;
-  energy_fit: number;
 };
 
 export type ExecutionComplete = {
@@ -49,7 +56,39 @@ export function useChat(userEmail?: string) {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStarted, setIsStarted] = useState(false);
-  const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>(null);
+  const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>({
+    type: "task_review",
+    message:
+      "Cek dulu daftar tugas dan draft jadwal ini. Kamu bisa approve, edit, tambah, atau hapus sebelum dijadwalkan.",
+    tasks: [
+      {
+        task_id: "ac45577c-dad4-4215-b6ea-5657a704469f",
+        title: "Klarifikasi banyak tugas yang belum terdefinisi",
+        subtasks: [
+          "Buat daftar singkat semua tugas yang sedang mengganggu pikiran (nama, deskripsi singkat).",
+          "Tanyakan atau catat deadline masing-masing tugas (hari ini, besok, minggu ini, atau tanggal spesifik).",
+          "Identifikasi prioritas tiap tugas (tinggi, sedang, rendah).",
+          "Catat sumber atau orang yang memberi tugas untuk referensi lebih lanjut.",
+          "Susun tabel ringkas di aplikasi catatan/Google Sheet untuk visualisasi.",
+        ],
+        estimated_minutes: 30,
+        deadline: null,
+        priority: 2,
+        category: "biasa",
+        preferred_window: "bebas",
+      },
+    ],
+    proposed_schedule: [
+      {
+        task_id: "ac45577c-dad4-4215-b6ea-5657a704469f",
+        task: "Buat daftar singkat semua tugas yang sedang mengganggu pikiran (nama, deskripsi singkat).",
+        priority: 2,
+        start_time: "2026-05-05T09:00:00",
+        duration_minutes: 30,
+        category: "biasa",
+      },
+    ],
+  });
 
   useEffect(() => {
     try {
@@ -172,6 +211,7 @@ export function useChat(userEmail?: string) {
     e: FormEvent | null,
     // Jika resume, pass approved_data — handleSend otomatis tahu ini resume
     resumeData?: ResumeData,
+    questionnaireData?: QuestionnairePayload,
   ) => {
     e?.preventDefault();
 
@@ -224,7 +264,8 @@ export function useChat(userEmail?: string) {
     const trimmed = inputValue.trim();
     if (!trimmed || isTyping) return;
 
-    const userMessage: Message = { role: "user", content: trimmed };
+    const userContent = buildUserContent(trimmed, questionnaireData);
+    const userMessage: Message = { role: "user", content: userContent };
     const nextMessages = [...messages, userMessage];
 
     setMessages([...nextMessages, { role: "system" as const, content: "" }]);
@@ -234,12 +275,12 @@ export function useChat(userEmail?: string) {
     setIsTyping(true);
 
     try {
-      await stream({
-        message: trimmed,
-        messages: nextMessages,
-        user_id: userEmail ?? "anonymous",
-        ...(threadId ? { thread_id: threadId } : {}),
-      });
+        await stream({
+          message: userContent,
+          messages: nextMessages,
+          user_id: userEmail ?? "anonymous",
+          ...(threadId ? { thread_id: threadId } : {}),
+        });
     } catch (err) {
       console.error("Chat error:", err);
       setMessages((prev) => {
@@ -267,7 +308,7 @@ export function useChat(userEmail?: string) {
     isTyping,
     isStarted,
     messagesEndRef,
-    hitlPayload, // ← gunakan ini untuk render UI review (counselor/prioritizer)
-    handleSend, // ← satu fungsi untuk semua
+    hitlPayload,
+    handleSend, 
   };
 }

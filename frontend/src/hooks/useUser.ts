@@ -7,7 +7,10 @@ import { authService } from "@/services/authService";
  * Menangani fetching, loading state, dan sinkronisasi antar komponen.
  */
 export function useUser() {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<UserProfile | null>({
+    name: "raka",
+    email: "rakafadillah@gmail.com",
+  });
   const [isUserLoading, setIsUserLoading] = useState(true);
 
   const loadUser = async () => {
@@ -34,7 +37,7 @@ export function useUser() {
 
     // Dengerkan event pembaruan user (misal setelah login/refresh delay)
     window.addEventListener("user_updated", loadUser);
-    
+
     return () => {
       window.removeEventListener("user_updated", loadUser);
     };
@@ -45,6 +48,6 @@ export function useUser() {
     isUserLoading,
     userInitial: user?.name ? user.name.charAt(0).toUpperCase() : "",
     refreshUser: loadUser,
-    logout
+    logout,
   };
 }

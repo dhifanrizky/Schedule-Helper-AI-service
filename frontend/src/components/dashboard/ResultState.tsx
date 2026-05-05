@@ -1,4 +1,5 @@
 import { ScheduleItem } from "@/types";
+import type { PrioritizerTask } from "@/hooks/useChat";
 
 interface ResultStateProps {
   scheduleItems: ScheduleItem[];
@@ -7,6 +8,8 @@ interface ResultStateProps {
   setIsEditingSchedule: (val: boolean) => void;
   setIsResult: (val: boolean) => void;
   setIsAnalyzing: (val: boolean) => void;
+  prioritizerTasks?: PrioritizerTask[];
+  onApprove?: () => void;
 }
 
 export function ResultState({
@@ -15,9 +18,61 @@ export function ResultState({
   isEditingSchedule,
   setIsEditingSchedule,
   setIsResult,
-  setIsAnalyzing
+  setIsAnalyzing,
+  prioritizerTasks,
+  onApprove
 }: ResultStateProps) {
-  
+  const fallbackTopPriorities = [
+    {
+      title: "Complete project proposal",
+      urgency: "High",
+      reason: "Closest deadline (tomorrow)",
+      duration: "2 hours"
+    }
+  ];
+
+  const fallbackQuickWins = [
+    { title: "Reply to urgent emails", time: "15 min" },
+    { title: "Update task tracker", time: "10 min" },
+    { title: "Schedule next week's meetings", time: "20 min" },
+    { title: "Review daily metrics", time: "10 min" }
+  ];
+
+  const getPriorityLabel = (priority: number) => {
+    if (priority >= 4) return "High";
+    if (priority >= 3) return "Medium";
+    return "Low";
+  };
+
+  const topPriorities = prioritizerTasks?.length
+    ? [...prioritizerTasks]
+        .sort((a, b) => b.priority - a.priority)
+        .slice(0, 3)
+        .map((task) => ({
+          title: task.title,
+          urgency: getPriorityLabel(task.priority),
+          reason: task.deadline ? `Deadline ${task.deadline}` : "High impact task",
+          duration: `${task.estimated_minutes} min`
+        }))
+    : fallbackTopPriorities;
+
+  const quickWins = prioritizerTasks?.length
+    ? (() => {
+        const filtered = prioritizerTasks.filter(
+          (task) => task.estimated_minutes <= 30 || task.priority <= 2
+        );
+        const candidates = (filtered.length ? filtered : prioritizerTasks)
+          .slice()
+          .sort((a, b) => a.estimated_minutes - b.estimated_minutes)
+          .slice(0, 4);
+
+        return candidates.map((task) => ({
+          title: task.title,
+          time: `${task.estimated_minutes} min`
+        }));
+      })()
+    : fallbackQuickWins;
+
   const handleRegenerate = async () => {
     setIsResult(false);
     setIsAnalyzing(true);
@@ -45,14 +100,7 @@ export function ResultState({
               <h3 className="text-[16px] font-semibold text-[#0A0A0A] font-inter">Top Priorities</h3>
             </div>
             <div className="flex flex-col gap-4">
-              {[
-                { 
-                  title: "Complete project proposal", 
-                  urgency: "High", 
-                  reason: "Closest deadline (tomorrow)", 
-                  duration: "2 hours" 
-                }
-              ].map((item, idx) => (
+              {topPriorities.map((item, idx) => (
                 <div key={idx} className="border border-[#E5E7EB] rounded-[12px] p-5 flex flex-col gap-2">
                   <div className="flex justify-between items-start">
                     <h4 className="text-[15px] font-medium text-[#0A0A0A] font-inter">{item.title}</h4>
@@ -76,12 +124,7 @@ export function ResultState({
               <h3 className="text-[16px] font-semibold text-[#0A0A0A] font-inter">Quick Wins</h3>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[
-                { title: "Reply to urgent emails", time: "15 min" },
-                { title: "Update task tracker", time: "10 min" },
-                { title: "Schedule next week's meetings", time: "20 min" },
-                { title: "Review daily metrics", time: "10 min" }
-              ].map((task, idx) => (
+              {quickWins.map((task, idx) => (
                 <div key={idx} className="border border-[#E5E7EB] rounded-[12px] p-4 flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-[#F3E8FF] flex items-center justify-center shrink-0">
                     <img src="/images-dashboard/Ceklis.webp" alt="Check" className="w-full h-full object-contain scale-110" />
@@ -99,7 +142,7 @@ export function ResultState({
           <div className="bg-white border border-[#E5E7EB] rounded-[16px] p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
               <img src="/images-dashboard/Schedule.webp" alt="Schedule" className="w-[18px] h-[18px] object-contain opacity-70" />
-              <h3 className="text-[16px] font-semibold text-[#0A0A0A] font-inter">Today's Schedule</h3>
+              <h3 className="text-[16px] font-semibold text-[#0A0A0A] font-inter">Proposed Schedule</h3>
             </div>
             <div className="flex flex-col gap-2.5">
               {scheduleItems.map((item, idx) => (
@@ -151,7 +194,10 @@ export function ResultState({
 
           {/* Actions */}
           <div className="flex gap-4 mt-2">
-            <button className="bg-[#8A38F5] text-white px-5 py-3 rounded-xl text-[14px] font-medium flex items-center gap-2 shadow-sm cursor-pointer hover:opacity-90 transition-opacity">
+            <button
+              onClick={onApprove}
+              className="bg-[#8A38F5] text-white px-5 py-3 rounded-xl text-[14px] font-medium flex items-center gap-2 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+            >
               <img src="/images-dashboard/Approved.webp" className="w-[18px] h-[18px] object-contain" alt="Approve" />
               Approve & Save Plan
             </button>

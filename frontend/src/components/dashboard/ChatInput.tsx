@@ -25,7 +25,7 @@ export function ChatInput({ value, onChange, onSubmit, disabled }: ChatInputProp
         <button
           type="submit"
           disabled={!value.trim() || disabled}
-          className="shrink-0 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-transform"
+          className="shrink-0 disabled:opacity-50 disabled:cursor-not-allowed hover:scale-105 transition-transform rounded-full overflow-clip"
         >
           <img
             src="/images-button/Send%20Button.webp"
