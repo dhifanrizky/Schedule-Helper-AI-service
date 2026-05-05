@@ -5,7 +5,8 @@ import { AppService } from './app.service.js';
 import { UsersModule } from './modules/users/users.module.js';
 import { PrismaModule } from './modules/prisma/prisma.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
-import { AgentModule } from './modules/agent/agent.module';
+import { AgentModule } from './modules/agent/agent.module.js';
+import { CalendarModule } from './modules/calendar/calendar.module.js';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { AgentModule } from './modules/agent/agent.module';
     AuthModule,
     UsersModule,
     AgentModule,
+    CalendarModule,
   ],
   controllers: [AppController],
   providers: [AppService],
