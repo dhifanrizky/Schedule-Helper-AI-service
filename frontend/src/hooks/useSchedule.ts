@@ -8,8 +8,8 @@ import { defaultScheduleItems } from "@/data/mockData";
  */
 export function useSchedule() {
   // Questionnaire States
-  const [energyLevel, setEnergyLevel] = useState<number>(2);
-  const [mood, setMood] = useState<number>(2);
+  const [energyLevel, setEnergyLevel] = useState<number>(50);
+  const [mood, setMood] = useState<number>(50);
   const [availableTime, setAvailableTime] = useState<string>("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 

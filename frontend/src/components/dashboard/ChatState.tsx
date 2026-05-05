@@ -1,17 +1,20 @@
 import { FormEvent, useEffect } from "react";
 import { Message } from "@/types";
+import { HitlPayload, ResumeData } from "@/hooks/useChat";
 import { ChatMessage } from "./ChatMessage";
 import { TypingIndicator } from "./TypingIndicator";
 import { QuestionnaireCard } from "./QuestionnaireCard";
 import { ChatInput } from "./ChatInput";
+import { CounselorApproveBar } from "./CounselorApproveBar";
 
 interface ChatStateProps {
   messages: Message[];
   isTyping: boolean;
   inputValue: string;
   setInputValue: (val: string) => void;
-  handleSend: (e: FormEvent) => void;
+  handleSend: (e: FormEvent | null, resumeData?: ResumeData) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  hitlPayload: HitlPayload | null;
   // Questionnaire props
   energyLevel: number;
   setEnergyLevel: (val: number) => void;
@@ -31,6 +34,7 @@ export function ChatState({
   setInputValue,
   handleSend,
   messagesEndRef,
+  hitlPayload,
   energyLevel,
   setEnergyLevel,
   mood,
@@ -58,9 +62,53 @@ export function ChatState({
             <div key={index} className="flex flex-col gap-4">
               <ChatMessage message={msg} />
 
+              {index === messages.length - 1 &&
+                msg.role === "system" &&
+                hitlPayload?.type === "counselor_review" && (
+                  <CounselorApproveBar
+                    payload={hitlPayload}
+                    onApprove={(editedDraft) =>
+                      handleSend(null, {
+                        approved: true,
+                        edited_draft: editedDraft ?? null
+                      })
+                    }
+                    onReject={() =>
+                      handleSend(null, { approved: false, edited_draft: null })
+                    }
+                  />
+                )}
+
+              {index === messages.length - 1 &&
+                msg.role === "system" &&
+                hitlPayload?.type === "task_review" && (
+                  <QuestionnaireCard
+                    variant="prioritizer"
+                    prioritizerMessage={hitlPayload.message}
+                    prioritizerTasks={hitlPayload.tasks}
+                    onConfirmPriorities={(tasks) =>
+                      handleSend(null, {
+                        tasks: tasks.map((task) => ({
+                          task: task.title,
+                          priority: task.urgency,
+                          deadline: task.deadline ?? ""
+                        }))
+                      })
+                    }
+                    energyLevel={energyLevel}
+                    setEnergyLevel={setEnergyLevel}
+                    mood={mood}
+                    setMood={setMood}
+                    availableTime={availableTime}
+                    setAvailableTime={setAvailableTime}
+                    isDropdownOpen={isDropdownOpen}
+                    setIsDropdownOpen={setIsDropdownOpen}
+                  />
+                )}
+
               {/* Form Card Questionnaire Trigger */}
               {index === messages.length - 1 &&
-                msg.role === "ai" &&
+                msg.role === "system" &&
                 msg.content === triggerText && (
                   <QuestionnaireCard
                     energyLevel={energyLevel}
