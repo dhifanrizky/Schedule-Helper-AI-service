@@ -15,7 +15,7 @@ export class CalendarService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-  ) {}
+  ) { }
 
   private async getGoogleAuth(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -42,7 +42,7 @@ export class CalendarService {
 
   async findAll(userId: string) {
     // Untuk fitur sinkronisasi tarik (pull), kita tampilkan dari DB lokal
-    // Namun kita bisa log data dari google untuk verifikasi
+    // Namun kita bisa log data dari google untuk verifikasi later
     const calendar = await this.getGoogleAuth(userId);
     if (calendar) {
       try {
