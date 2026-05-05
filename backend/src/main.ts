@@ -7,7 +7,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // Enable CORS for frontend
-  app.enableCors();
+  app.enableCors({
+    origin: true, // Mengizinkan semua domain (untuk development)
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+  });
 
   // Set global prefix, but keep root health endpoint on '/'
   app.setGlobalPrefix('api', {

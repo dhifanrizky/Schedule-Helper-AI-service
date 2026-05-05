@@ -1,6 +1,6 @@
 services:
   dev-db:
-    image: postgres:18
+    image: postgres:17
     ports:
       - 5434:5432
     environment:
@@ -21,6 +21,9 @@ services:
       - JWT_SECRET=supersecretkey
       - JWT_EXPIRES_IN=1d
       - AI_API=http://host.docker.internal:8000
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - GOOGLE_CALLBACK_URL=${GOOGLE_CALLBACK_URL}
     volumes:
       - .:/app
       - /app/node_modules

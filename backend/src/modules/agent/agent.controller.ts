@@ -3,18 +3,20 @@
   @typescript-eslint/no-unsafe-member-access
 */
 
-import { Controller, Get, Req, Post, Body, Param, Res } from '@nestjs/common';
+import { Controller, Get, Req, Post, Body, Param, Res, UseGuards } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { AgentService } from './agent.service';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ChatDto } from './dto/chat.dto';
 import axios from 'axios';
 import { Readable } from 'stream';
 import { RouterType } from './types/agent-output.type';
+import { JwtGuard } from '../auth/guard/jwt.guard.js';
+import { GetUser } from '../auth/decorator/get-user.decorator.js';
 
 @ApiTags('agent')
-// @ApiBearerAuth()
-// @UseGuards(JwtGuard)
+@ApiBearerAuth()
+@UseGuards(JwtGuard)
 @Controller('agent')
 export class AgentController {
   constructor(private readonly agentService: AgentService) {}
@@ -24,9 +26,9 @@ export class AgentController {
     @Body() body: ChatDto,
     @Res() res: Response,
     @Req() req: Request,
+    @GetUser('id') userId: string,
   ) {
     try {
-      const userId = 'caa8293b-8d8f-48ea-ab5f-a1d354a88077';
 
       const cleanPayload: ChatDto = {
         message: body.message,
@@ -119,16 +121,17 @@ export class AgentController {
           thread_id: sessionThreadId,
         };
 
-        void this.agentService.upsertSession(
+        this.agentService.upsertSession(
           payload,
           userId,
           status,
           routerData?.current_intent,
           aiMessage,
-        );
+        ).catch((err) => console.error('[Agent] upsertSession error:', err.message));
 
         if (routerData?.raw_tasks?.length) {
-          void this.agentService.upsertRawTask(userId, routerData.raw_tasks);
+          this.agentService.upsertRawTask(userId, routerData.raw_tasks)
+            .catch((err) => console.error('[Agent] upsertRawTask error:', err.message));
         }
       });
 
