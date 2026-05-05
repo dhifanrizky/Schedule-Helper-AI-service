@@ -1,37 +1,45 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
-import { Strategy, VerifyCallback } from 'passport-google-oauth20';
+import {
+  Profile,
+  Strategy,
+  StrategyOptions,
+  VerifyCallback,
+} from 'passport-google-oauth20';
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
   constructor(config: ConfigService) {
-    super({
-      clientID:
-        config.get<string>('GOOGLE_CLIENT_ID') || 'placeholder-client-id',
-      clientSecret:
-        config.get<string>('GOOGLE_CLIENT_SECRET') ||
-        'placeholder-client-secret',
-      callbackURL:
-        config.get<string>('GOOGLE_CALLBACK_URL') ||
-        'http://localhost:3000/api/auth/google/callback',
-      scope: ['email', 'profile', 'https://www.googleapis.com/auth/calendar'],
-      // Mendapatkan refresh token agar backend bisa sync saat user offline
-      accessType: 'offline',
-      prompt: 'consent',
-    });
+    const options: StrategyOptions & { accessType?: string; prompt?: string } =
+      {
+        clientID:
+          config.get<string>('GOOGLE_CLIENT_ID') || 'placeholder-client-id',
+        clientSecret:
+          config.get<string>('GOOGLE_CLIENT_SECRET') ||
+          'placeholder-client-secret',
+        callbackURL:
+          config.get<string>('GOOGLE_CALLBACK_URL') ||
+          'http://localhost:3000/api/auth/google/callback',
+        scope: ['email', 'profile', 'https://www.googleapis.com/auth/calendar'],
+        // Mendapatkan refresh token agar backend bisa sync saat user offline
+        accessType: 'offline',
+        prompt: 'consent',
+      };
+
+    super(options);
   }
 
-  async validate(
+  validate(
     accessToken: string,
     refreshToken: string,
-    profile: any,
+    profile: Profile,
     done: VerifyCallback,
-  ): Promise<any> {
+  ): void {
     const { name, emails, id } = profile;
     const user = {
-      email: emails[0].value,
-      name: `${name.givenName} ${name.familyName || ''}`.trim(),
+      email: emails?.[0]?.value ?? '',
+      name: `${name?.givenName ?? ''} ${name?.familyName ?? ''}`.trim(),
       googleId: id,
       accessToken,
       refreshToken,

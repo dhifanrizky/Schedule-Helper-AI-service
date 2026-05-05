@@ -81,10 +81,6 @@ export class AgentService {
           });
         }
 
-        await tx.message.createMany({
-          data: messages,
-        });
-
         return {
           threadId: sessionId,
           status: 'accepted',

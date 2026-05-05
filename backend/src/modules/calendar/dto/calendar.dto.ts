@@ -1,21 +1,27 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsNumber, IsDateString, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsNumber,
+  IsDateString,
+} from 'class-validator';
 
 export class CreateCalendarDto {
   @ApiProperty({ example: 'Meeting with Team' })
   @IsString()
   @IsNotEmpty()
-  title: string;
+  title!: string;
 
   @ApiProperty({ example: 'Discuss project architecture' })
   @IsString()
   @IsNotEmpty()
-  description: string;
+  description!: string;
 
   @ApiProperty({ example: 'serius' })
   @IsString()
   @IsNotEmpty()
-  category: string;
+  category!: string;
 
   @ApiPropertyOptional({ example: 60 })
   @IsNumber()
@@ -36,7 +42,7 @@ export class CreateCalendarDto {
   @IsDateString()
   @IsOptional()
   startTime?: string;
-  
+
   @ApiPropertyOptional({ example: 'pending' })
   @IsString()
   @IsOptional()

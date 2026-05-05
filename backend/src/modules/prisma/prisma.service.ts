@@ -22,6 +22,14 @@ export class PrismaService
       );
     }
 
+    try {
+      const dbHost = new URL(connectionString).host;
+      // Log which database target is used without exposing credentials.
+      console.log('[DB] using', isProduction ? 'NEON' : 'LOCAL', dbHost);
+    } catch {
+      console.warn('[DB] invalid database URL');
+    }
+
     const adapter = new PrismaPg({ connectionString });
     super({ adapter });
   }

@@ -8,7 +8,12 @@ import {
   Delete,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags, ApiResponse } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiTags,
+  ApiResponse,
+} from '@nestjs/swagger';
 import { CalendarService } from './calendar.service.js';
 import { CreateCalendarDto, UpdateCalendarDto } from './dto/calendar.dto.js';
 import { JwtGuard } from '../auth/guard/jwt.guard.js';
@@ -22,7 +27,9 @@ export class CalendarController {
   constructor(private readonly calendarService: CalendarService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Synchronize / Pull all calendar schedules for the current user' })
+  @ApiOperation({
+    summary: 'Synchronize / Pull all calendar schedules for the current user',
+  })
   @ApiResponse({ status: 200, description: 'Return all schedules' })
   findAll(@GetUser('id') userId: string) {
     return this.calendarService.findAll(userId);
@@ -36,7 +43,10 @@ export class CalendarController {
 
   @Post()
   @ApiOperation({ summary: 'Create a new manual schedule' })
-  create(@GetUser('id') userId: string, @Body() createCalendarDto: CreateCalendarDto) {
+  create(
+    @GetUser('id') userId: string,
+    @Body() createCalendarDto: CreateCalendarDto,
+  ) {
     return this.calendarService.create(userId, createCalendarDto);
   }
 

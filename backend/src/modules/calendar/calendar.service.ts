@@ -1,9 +1,15 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateCalendarDto, UpdateCalendarDto } from './dto/calendar.dto.js';
 import { google } from 'googleapis';
 import { ConfigService } from '@nestjs/config';
 
+/* eslint-disable
+  @typescript-eslint/no-unsafe-assignment,
+  @typescript-eslint/no-unsafe-call,
+  @typescript-eslint/no-unsafe-member-access,
+  @typescript-eslint/no-unsafe-return
+*/
 @Injectable()
 export class CalendarService {
   constructor(
@@ -47,9 +53,12 @@ export class CalendarService {
           singleEvents: true,
           orderBy: 'startTime',
         });
-        console.log(`[Google Sync] Berhasil menarik ${res.data.items?.length} event.`);
+        console.log(
+          `[Google Sync] Berhasil menarik ${res.data.items?.length} event.`,
+        );
       } catch (e) {
-        console.error('[Google Sync] Gagal menarik data:', e.message);
+        const message = e instanceof Error ? e.message : String(e);
+        console.error('[Google Sync] Gagal menarik data:', message);
       }
     }
 
@@ -81,11 +90,15 @@ export class CalendarService {
           summary: dto.title,
           description: dto.description,
           start: {
-            dateTime: dto.startTime ? new Date(dto.startTime).toISOString() : new Date().toISOString(),
+            dateTime: dto.startTime
+              ? new Date(dto.startTime).toISOString()
+              : new Date().toISOString(),
             timeZone: 'Asia/Jakarta',
           },
           end: {
-            dateTime: dto.deadline ? new Date(dto.deadline).toISOString() : new Date(Date.now() + 3600000).toISOString(),
+            dateTime: dto.deadline
+              ? new Date(dto.deadline).toISOString()
+              : new Date(Date.now() + 3600000).toISOString(),
             timeZone: 'Asia/Jakarta',
           },
         };
@@ -94,10 +107,11 @@ export class CalendarService {
           calendarId: 'primary',
           requestBody: event,
         });
-        googleEventId = res.data.id;
+        googleEventId = res.data.id ?? null;
         console.log('[Google Sync] Event berhasil dibuat:', googleEventId);
       } catch (e) {
-        console.error('[Google Sync] Gagal membuat event:', e.message);
+        const message = e instanceof Error ? e.message : String(e);
+        console.error('[Google Sync] Gagal membuat event:', message);
       }
     }
 
@@ -129,12 +143,17 @@ export class CalendarService {
           requestBody: {
             summary: dto.title,
             description: dto.description,
-            start: dto.startTime ? { dateTime: new Date(dto.startTime).toISOString() } : undefined,
-            end: dto.deadline ? { dateTime: new Date(dto.deadline).toISOString() } : undefined,
+            start: dto.startTime
+              ? { dateTime: new Date(dto.startTime).toISOString() }
+              : undefined,
+            end: dto.deadline
+              ? { dateTime: new Date(dto.deadline).toISOString() }
+              : undefined,
           },
         });
       } catch (e) {
-        console.error('[Google Sync] Gagal update event:', e.message);
+        const message = e instanceof Error ? e.message : String(e);
+        console.error('[Google Sync] Gagal update event:', message);
       }
     }
 
@@ -164,7 +183,8 @@ export class CalendarService {
           eventId: task.googleEventId,
         });
       } catch (e) {
-        console.error('[Google Sync] Gagal hapus event:', e.message);
+        const message = e instanceof Error ? e.message : String(e);
+        console.error('[Google Sync] Gagal hapus event:', message);
       }
     }
 
