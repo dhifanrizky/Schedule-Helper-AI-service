@@ -73,11 +73,13 @@ async def get_graph() -> CompiledStateGraph:
             provider=ROUTER_LLM_PROVIDER, model=ROUTER_LLM_MODEL, temperature=0.0
         )
 
+        calendar_client = get_calendar_client()
+
         agents = {
             "router": make_router(INTENT_MAP, router_llm),
-            "counselor": make_counselor(counselor_llm),
-            "prioritizer": make_prioritizer(prioritizer_llm),
-            "scheduler": make_scheduler(scheduler_llm, get_calendar_client()),
+            "counselor": make_counselor(counselor_llm, calendar_client=calendar_client),
+            "prioritizer": make_prioritizer(prioritizer_llm, calendar_client=calendar_client),
+            "scheduler": make_scheduler(scheduler_llm, calendar_client),
         }
 
         _graph = build_graph(agents, checkpointer=await get_checkpointer())

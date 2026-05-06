@@ -12,7 +12,7 @@ interface ChatMessageProps {
 export function ChatMessage({ message, payload, showAvatar = true }: ChatMessageProps) {
   const isAi = message.role === "system";
   const displayedContent = (() => {
-    if (payload) return payload.draft;
+    if (payload) return payload.message;
     if (message.role !== "user") return message.content;
 
     const marker = "USER MESSAGES:";

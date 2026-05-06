@@ -11,7 +11,7 @@ const CONTROL_TOKEN_PATTERN =
   /\x00(?:THREAD_ID|EXECUTION_COMPLETE):[\s\S]*?\x00/g;
 
 export type HitlPayload =
-  | { type: "counselor_review"; draft: string; message: string }
+  | { type: "counselor_chat"; draft: string; message: string }
   | {
       type: "task_review";
       tasks: PrioritizerTask[];
@@ -89,7 +89,7 @@ export function useChat(userEmail?: string) {
   //     },
   //   ],
   // });
-    const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>(null);
+  const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>(null);
 
   useEffect(() => {
     try {
@@ -159,6 +159,8 @@ export function useChat(userEmail?: string) {
       controlBuffer = "";
 
       combined = combined.replace(CONTROL_TOKEN_PATTERN, (token) => {
+        let replacementText = ""; // Default: hapus token dari stream
+
         if (!threadIdCaptured) {
           const threadMatch = THREAD_ID_PATTERN.exec(token);
           if (threadMatch) {
@@ -173,6 +175,11 @@ export function useChat(userEmail?: string) {
             const execData = JSON.parse(execMatch[1]) as ExecutionComplete;
             if (execData.status === "waiting_hitl" && execData.hitl_payload) {
               setHitlPayload(execData.hitl_payload);
+
+              // Jika ada pesan untuk user, jadikan pesan ini sebagai teks pengganti
+              if (execData.hitl_payload.message) {
+                replacementText = execData.hitl_payload.message;
+              }
             } else {
               setHitlPayload(null);
             }
@@ -181,7 +188,9 @@ export function useChat(userEmail?: string) {
           }
         }
 
-        return "";
+        // Kembalikan replacementText.
+        // Jika ada message, teks ini akan masuk ke 'combined'. Jika tidak, akan jadi string kosong ("")
+        return replacementText;
       });
 
       const trailingControlStart = combined.lastIndexOf("\x00");
@@ -195,9 +204,16 @@ export function useChat(userEmail?: string) {
       setMessages((prev) => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
+
+        // Pastikan message terakhir memiliki role "system"
         if (updated[lastIdx]?.role === "system") {
           updated[lastIdx] = { role: "system", content: accumulated };
+        } else if (accumulated.trim() !== "") {
+          // (Opsional) Jika system message belum ada di array, buat object baru
+          // Ini berguna kalau state 'messages' sebelumnya tidak diakhiri oleh "system"
+          updated.push({ role: "system", content: accumulated });
         }
+
         return updated;
       });
     }
@@ -276,12 +292,12 @@ export function useChat(userEmail?: string) {
     setIsTyping(true);
 
     try {
-        await stream({
-          message: userContent,
-          messages: nextMessages,
-          user_id: userEmail ?? "anonymous",
-          ...(threadId ? { thread_id: threadId } : {}),
-        });
+      await stream({
+        message: userContent,
+        messages: nextMessages,
+        user_id: userEmail ?? "anonymous",
+        ...(threadId ? { thread_id: threadId } : {}),
+      });
     } catch (err) {
       console.error("Chat error:", err);
       setMessages((prev) => {
@@ -310,6 +326,6 @@ export function useChat(userEmail?: string) {
     isStarted,
     messagesEndRef,
     hitlPayload,
-    handleSend, 
+    handleSend,
   };
 }

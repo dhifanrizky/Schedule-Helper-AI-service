@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     google_calendar_credentials_path: str = "./credentials.json"
     google_calendar_token_path: str = "./token.json"
 
+    # Backend API
+    backend_api_url: str = "http://localhost:3000/api"
+    backend_api_token: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("BACKEND_API_TOKEN", "API_SERVICE_TOKEN"),
+    )
+
     # App
     app_env: str = "development"
     log_level: str = "INFO"

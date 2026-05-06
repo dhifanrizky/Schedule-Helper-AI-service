@@ -15,7 +15,7 @@ export class CalendarService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
-  ) { }
+  ) {}
 
   private async getGoogleAuth(userId: string) {
     const user = await this.prisma.user.findUnique({

@@ -18,7 +18,7 @@ from langgraph.types import interrupt
 from pydantic import BaseModel, Field, ValidationError
 
 from app.graph.state import AppState
-from app.graph.agents.helpers import ai_msg, get_raw_tasks
+from app.graph.agents.helpers import ai_msg, get_raw_tasks, get_metadata
 from app.graph.types import RawTask, TaskBreakdown, ScheduleItem
 
 
@@ -172,7 +172,7 @@ def apply_hitl_edits(
 
     return final_tasks, final_schedule
 
-def make_prioritizer(llm: BaseChatModel):
+def make_prioritizer(llm: BaseChatModel, calendar_client=None):
     structured_llm = llm.with_structured_output(LLMTaskBreakdownResponse)
 
     def run(state: AppState) -> dict:
@@ -197,8 +197,14 @@ def make_prioritizer(llm: BaseChatModel):
                     "error_message": "raw_tasks kosong.",
                 }
 
+            schedule_context = _fetch_schedule_context(calendar_client, state)
+
             try:
-                task_breakdown = build_task_breakdown_with_llm(raw_tasks, structured_llm)
+                task_breakdown = build_task_breakdown_with_llm(
+                    raw_tasks,
+                    structured_llm,
+                    schedule_context=schedule_context,
+                )
                 print("[Agent 3] LLM prioritizer berhasil dipakai.")
             except Exception as err:
                 print(f"[Agent 3] LLM prioritizer gagal, fallback dipakai: {type(err).__name__}: {err}")
@@ -243,20 +249,27 @@ def make_prioritizer(llm: BaseChatModel):
     return run
 
 
-def build_task_breakdown_with_llm(raw_tasks: list[RawTask], structured_llm) -> list[TaskBreakdown]:
+def build_task_breakdown_with_llm(
+    raw_tasks: list[RawTask],
+    structured_llm,
+    schedule_context: str = "",
+) -> list[TaskBreakdown]:
     normalized_raw_tasks = [_raw_task_to_dict(task, idx) for idx, task in enumerate(raw_tasks, start=1)]
 
     today = datetime.now().strftime("%Y-%m-%d")
+
+    prompt_content = (
+        f"Tanggal hari ini: {today}\n\n"
+        + (f"Konteks jadwal existing (jangan diubah):\n{schedule_context}\n\n" if schedule_context else "")
+        + "Ubah raw_tasks berikut menjadi task breakdown terstruktur:\n"
+        f"{normalized_raw_tasks}"
+    )
 
     result = structured_llm.invoke([
         {"role": "system", "content": SYSTEM_PROMPT},
         {
             "role": "user",
-            "content": (
-                f"Tanggal hari ini: {today}\n\n"
-                "Ubah raw_tasks berikut menjadi task breakdown terstruktur:\n"
-                f"{normalized_raw_tasks}"
-            ),
+            "content": prompt_content,
         },
     ])
 
@@ -506,6 +519,43 @@ def build_task_breakdown_rule_based(raw_tasks: list[RawTask]) -> list[TaskBreakd
     return breakdown
 
 
+def _fetch_schedule_context(calendar_client, state: AppState) -> str:
+    if calendar_client is None:
+        return ""
+
+    metadata = get_metadata(state) or {}
+    token = _extract_auth_token(metadata)
+
+    try:
+        schedules = calendar_client.list_schedules(token=token)
+    except Exception as err:
+        print(f"[Agent 3] Calendar context error: {err}")
+        return ""
+
+    if not schedules:
+        return "(tidak ada jadwal)"
+
+    return _format_schedule_context(schedules)
+
+
+def _format_schedule_context(schedules: list[dict]) -> str:
+    lines: list[str] = []
+    for item in schedules[:5]:
+        title = str(item.get("title") or "(tanpa judul)")
+        start_time = item.get("startTime") or item.get("start_time")
+        deadline = item.get("deadline") or item.get("endTime")
+        status = item.get("status") or "pending"
+        time_bits = []
+        if start_time:
+            time_bits.append(f"mulai: {start_time}")
+        if deadline:
+            time_bits.append(f"selesai: {deadline}")
+        time_part = f" ({', '.join(time_bits)})" if time_bits else ""
+        lines.append(f"- {title} [{status}]{time_part}")
+
+    return "\n".join(lines)
+
+
 def build_basic_subtasks(task_text: str) -> list[str]:
     text = task_text.strip()
     lower_text = text.lower()
@@ -531,6 +581,14 @@ def build_basic_subtasks(task_text: str) -> list[str]:
 
 def _deadline_sort_value(deadline: str | None) -> str:
     return deadline or "9999-12-31T23:59:59"
+
+
+def _extract_auth_token(metadata: dict) -> str | None:
+    for key in ("auth_token", "access_token", "authorization"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def minutes_to_iso(total_minutes: int, base_date: str) -> str:

@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { UserIcon, MailIcon, LockIcon, ArrowLeftIcon, InfoIcon } from "@/components/auth/AuthIcons";
 import { validateEmail } from "@/utils/validation";
 import { authService } from "@/services/authService";
+import { FcGoogle } from "react-icons/fc";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,6 +23,7 @@ export default function RegisterPage() {
   const [emailError, setEmailError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [generalError, setGeneralError] = useState("");
+  const [isGoogleSubmitting, setIsGoogleSubmitting] = useState(false);
 
   const handleEmailChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
@@ -36,7 +38,7 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setGeneralError("");
-    
+
     // Validasi email sebelum kirim
     const error = validateEmail(email);
     if (error) {
@@ -48,7 +50,7 @@ export default function RegisterPage() {
     try {
       // === INTEGRASI BE: Proses registrasi melalui service ===
       await authService.register(name, email, password);
-      
+
       // Redirect ke dashboard setelah sukses
       router.push("/dashboard");
     } catch (err: any) {
@@ -57,6 +59,18 @@ export default function RegisterPage() {
       setIsSubmitting(false);
     }
   };
+
+const handleGoogleLogin = () => {
+    setIsGoogleSubmitting(true);
+    setGeneralError("");
+
+    // Langsung arahkan browser ke endpoint backend
+    // JANGAN gunakan fetch() / authService.oauth() untuk flow redirect ini
+    // karena akan terblokir oleh kebijakan CORS browser.
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+    window.location.href = `${apiUrl}/auth/google`;
+  };
+
 
   return (
     <div className={`min-h-screen bg-[#fafafa] flex flex-col justify-center py-12 sm:px-6 lg:px-8 ${inter.className}`}>
@@ -154,6 +168,26 @@ export default function RegisterPage() {
               </button>
             </div>
           </form>
+          {/* Separator */}
+          <div className="relative mt-8 mb-6">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-200"></div>
+            </div>
+            <div className="relative flex justify-center text-[14px]">
+              <span className="px-4 text-[#717182] bg-white">Or continue with</span>
+            </div>
+          </div>
+
+          {/* Tombol Google OAuth */}
+          <button
+            type="button"
+            onClick={handleGoogleLogin}
+            disabled={isSubmitting || isGoogleSubmitting}
+            className="flex items-center justify-center w-full gap-3 px-4 py-3.5 text-[16px] font-medium text-[#0A0A0A] transition-all bg-white border border-gray-200 rounded-xl hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#8A38F5] disabled:opacity-70 disabled:cursor-not-allowed"
+          >
+            <FcGoogle className="w-[22px] h-[22px]" />
+            <span>{isGoogleSubmitting ? "Connecting to Google..." : "Google"}</span>
+          </button>
 
           <p className="mt-8 text-center text-[16px] text-[#717182]">
             Already have an account?{" "}

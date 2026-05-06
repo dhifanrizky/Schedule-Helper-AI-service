@@ -16,9 +16,9 @@ export const authService = {
       const response = await fetch(`${API_URL}/users/me`, {
         method: "GET",
         headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json"
-        }
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       });
 
       if (!response.ok) {
@@ -28,9 +28,9 @@ export const authService = {
       const data = await response.json();
       const userData: UserProfile = {
         name: data.name,
-        email: data.email
+        email: data.email,
       };
-      
+
       this.saveUserToSession(userData);
       return userData;
     } catch (error) {
@@ -46,7 +46,7 @@ export const authService = {
     sessionStorage.removeItem("app_token");
     sessionStorage.removeItem("app_user");
     sessionStorage.removeItem("chat_messages");
-    
+
     try {
       await fetch(`${API_URL}/auth/logout`, { method: "POST" });
     } catch (e) {
@@ -61,9 +61,9 @@ export const authService = {
     const response = await fetch(`${API_URL}/auth/login`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ email, password }),
     });
 
     if (!response.ok) {
@@ -87,9 +87,9 @@ export const authService = {
     const response = await fetch(`${API_URL}/auth/register`, {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
       },
-      body: JSON.stringify({ name, email, password })
+      body: JSON.stringify({ name, email, password }),
     });
 
     if (!response.ok) {
@@ -107,11 +107,30 @@ export const authService = {
     }
   },
 
+  async oauth(provider: string = "google"): Promise<void> {
+    // Sesuaikan endpoint, asumsikan API_URL sudah termasuk '/api'
+    const response = await fetch(`${API_URL}/auth/${provider}`);
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || "OAuth failed");
+    }
+
+    const data = await response.json();
+    if (data.access_token) {
+      sessionStorage.setItem("app_token", data.access_token);
+      // Panggil getCurrentUser agar data profil langsung di-fetch dan di-save ke session
+      await this.getCurrentUser();
+    } else {
+      throw new Error("Token not found in response");
+    }
+  },
+
   /**
    * Menyimpan data user secara manual ke storage.
    */
   saveUserToSession(user: UserProfile): void {
     sessionStorage.setItem("app_user", JSON.stringify(user));
     window.dispatchEvent(new Event("user_updated"));
-  }
+  },
 };

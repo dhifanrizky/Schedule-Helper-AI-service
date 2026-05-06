@@ -14,7 +14,11 @@ interface ChatStateProps {
   handleSend: (
     e: FormEvent | null,
     resumeData?: ResumeData,
-    questionnaireData?: { energyLevel: number; mood: number; availableTime: string }
+    questionnaireData?: {
+      energyLevel: number;
+      mood: number;
+      availableTime: string;
+    },
   ) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   hitlPayload: HitlPayload | null;
@@ -27,13 +31,29 @@ export function ChatState({
   setInputValue,
   handleSend,
   messagesEndRef,
-  hitlPayload
+  hitlPayload,
 }: ChatStateProps) {
-
   // Auto-scroll logic inside component
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
+
+  // Bikin flag untuk ngecek apakah status terakhir lagi butuh approval
+  const isAwaitingApproval =
+    messages.length > 0 &&
+    messages[messages.length - 1].role === "system" &&
+    hitlPayload?.type === "counselor_chat";
+
+  // Bikin custom submit handler
+  const handleInputSubmit = (e: FormEvent) => {
+    if (isAwaitingApproval) {
+      // Kalau lagi nunggu approval dan user malah ngetik, langsung panggil onReject
+      handleSend(e, { approved: false, edited_draft: null });
+    } else {
+      // Chat normal
+      handleSend(e);
+    }
+  };
 
   return (
     <main className="flex-1 flex flex-col h-full bg-[#FFFFFF]">
@@ -42,22 +62,20 @@ export function ChatState({
         <div className="max-w-4xl mx-auto flex flex-col gap-8">
           {messages.map((msg, index) => (
             <div key={index} className="flex flex-col gap-4">
-              {msg.role !== "system" &&
-                <ChatMessage message={msg} />
-              }
+              {msg.role !== "system" && <ChatMessage message={msg} />}
               {msg.role === "system" &&
-                hitlPayload?.type === "counselor_review" &&
-                <ChatMessage message={msg} payload={hitlPayload} />
-              }
+                hitlPayload?.type === "counselor_chat" && (
+                  <ChatMessage message={msg} payload={hitlPayload} />
+                )}
               {index === messages.length - 1 &&
                 msg.role === "system" &&
-                hitlPayload?.type === "counselor_review" && (
+                hitlPayload?.type === "counselor_chat" && (
                   <CounselorApproveBar
                     payload={hitlPayload}
                     onApprove={(editedDraft) =>
                       handleSend(null, {
                         approved: true,
-                        edited_draft: editedDraft ?? null
+                        edited_draft: editedDraft ?? null,
                       })
                     }
                     onReject={() =>
@@ -65,7 +83,6 @@ export function ChatState({
                     }
                   />
                 )}
-
             </div>
           ))}
 
@@ -77,8 +94,13 @@ export function ChatState({
       <ChatInput
         value={inputValue}
         onChange={setInputValue}
-        onSubmit={handleSend}
+        onSubmit={handleInputSubmit}
         disabled={isTyping}
+        placeholder={
+          isAwaitingApproval
+            ? "Ketik di sini untuk menambah cerita..."
+            : "Type your message..."
+        }
       />
     </main>
   );

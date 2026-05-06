@@ -4,7 +4,7 @@ from langgraph.types import interrupt as _langgraph_interrupt
 from pydantic import BaseModel, Field
 from typing import Optional
 from app.graph.state import AppState
-from app.graph.agents.helpers import last_message, ai_msg, get_hitl_input, get_raw_tasks
+from app.graph.agents.helpers import last_message, ai_msg, get_hitl_input, get_raw_tasks, get_metadata
 from app.graph.types import CategoryType
 
 # ---------------------------------------------------------------------------
@@ -183,7 +183,7 @@ Jangan terlalu banyak tanda seru. Jangan lebay."""
 
 # ── Factory ───────────────────────────────────────────────────────────────────
 
-def make_counselor(llm, _interrupt=None):
+def make_counselor(llm, _interrupt=None, calendar_client=None):
     interrupt_fn = _interrupt if _interrupt is not None else _langgraph_interrupt
     counselor_llm = llm.with_structured_output(CounselorOutput)
 
@@ -221,6 +221,8 @@ def make_counselor(llm, _interrupt=None):
             raw_tasks = _apply_pre_enrich(raw_tasks, additional_context, current_task_index)
             _debug("PRE-ENRICHED TASKS", raw_tasks)
 
+        schedule_context = _fetch_schedule_context(calendar_client, state)
+
         # Prompt ke LLM — sekarang pakai raw_tasks yang sudah dienrich
         prompt_content = _build_prompt(
             user_msg=user_msg,
@@ -230,6 +232,7 @@ def make_counselor(llm, _interrupt=None):
             current_task_index=current_task_index,
             is_first_loop=is_first_loop,
             loop_count=loop_count,
+            schedule_context=schedule_context,
         )
         _debug("PROMPT", prompt_content)
 
@@ -325,6 +328,7 @@ def _build_prompt(
     current_task_index: int,
     is_first_loop: bool,
     loop_count: int,
+    schedule_context: str,
 ) -> str:
     task_context = _format_task_context(raw_tasks)
     n_tasks = len(raw_tasks)
@@ -335,6 +339,9 @@ def _build_prompt(
 
     if additional_context:
         parts.append(f"Jawaban/info tambahan dari user: {additional_context}")
+
+    if schedule_context:
+        parts.append(f"\nKonteks jadwal existing (jangan ubah):\n{schedule_context}")
 
     parts.append(f"\nTotal task terdeteksi: {n_tasks}")
     parts.append(f"Task list:\n{task_context}")
@@ -355,6 +362,43 @@ def _build_prompt(
         parts.append(f"\n[LOOP TERAKHIR — set all_complete=True untuk semua task]")
 
     return "\n".join(parts)
+
+
+def _fetch_schedule_context(calendar_client, state: AppState) -> str:
+    if calendar_client is None:
+        return ""
+
+    metadata = get_metadata(state) or {}
+    token = _extract_auth_token(metadata)
+
+    try:
+        schedules = calendar_client.list_schedules(token=token)
+    except Exception as err:
+        _debug("CALENDAR CONTEXT ERROR", err)
+        return ""
+
+    if not schedules:
+        return "(tidak ada jadwal)"
+
+    return _format_schedule_context(schedules)
+
+
+def _format_schedule_context(schedules: list[dict]) -> str:
+    lines: list[str] = []
+    for item in schedules[:5]:
+        title = str(item.get("title") or "(tanpa judul)")
+        start_time = item.get("startTime") or item.get("start_time")
+        deadline = item.get("deadline") or item.get("endTime")
+        status = item.get("status") or "pending"
+        time_bits = []
+        if start_time:
+            time_bits.append(f"mulai: {start_time}")
+        if deadline:
+            time_bits.append(f"selesai: {deadline}")
+        time_part = f" ({', '.join(time_bits)})" if time_bits else ""
+        lines.append(f"- {title} [{status}]{time_part}")
+
+    return "\n".join(lines)
 
 
 # ── Enrichment ────────────────────────────────────────────────────────────────
@@ -555,3 +599,11 @@ def _to_dict(task) -> dict:
     if isinstance(task, dict):
         return dict(task)
     return {}
+
+
+def _extract_auth_token(metadata: dict) -> str | None:
+    for key in ("auth_token", "access_token", "authorization"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None

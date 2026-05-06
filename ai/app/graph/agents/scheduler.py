@@ -56,7 +56,13 @@ def make_scheduler(llm, calendar_client):
                 metadata,
                 structured_llm,
             )
-            event_ids = _schedule_items(calendar_client, calendar_payloads, metadata)
+            auth_token = _extract_auth_token(metadata)
+            event_ids = _schedule_items(
+                calendar_client,
+                calendar_payloads,
+                metadata,
+                auth_token,
+            )
         except ValueError as err:
             return {
                 **ai_msg("Format jadwal belum valid. Mohon perbaiki dulu sebelum dikirim ke kalender."),
@@ -96,14 +102,16 @@ def _schedule_items(
     calendar_client,
     calendar_items: list[dict],
     metadata: dict,
+    auth_token: str | None,
 ) -> list[str]:
     event_ids: list[str] = []
     timezone_name = metadata.get("timezone") or DEFAULT_TIMEZONE
 
     for item in calendar_items:
-        payload = _calendar_dto_to_event_payload(item, timezone_name)
-        event_id = calendar_client.create_event(payload)
-        event_ids.append(event_id)
+        payload = _calendar_dto_to_payload(item, timezone_name)
+        response = calendar_client.create_schedule(payload, token=auth_token)
+        created_id = response.get("id") if isinstance(response, dict) else None
+        event_ids.append(str(created_id) if created_id is not None else "")
 
     return event_ids
 
@@ -206,7 +214,7 @@ def _fallback_calendar_payloads(seed_items: list[dict]) -> list[dict]:
     return fallback
 
 
-def _calendar_dto_to_event_payload(dto: dict, timezone_name: str) -> dict:
+def _calendar_dto_to_payload(dto: dict, timezone_name: str) -> dict:
     start_value = dto.get("startTime")
     end_value = dto.get("deadline")
 
@@ -226,10 +234,21 @@ def _calendar_dto_to_event_payload(dto: dict, timezone_name: str) -> dict:
     return {
         "title": dto.get("title") or "Untitled Task",
         "description": dto.get("description") or "",
-        "start": start_dt.isoformat(),
-        "end": end_dt.isoformat(),
-        "timezone": timezone_name,
+        "category": dto.get("category") or "biasa",
+        "estimatedMinutes": dto.get("estimatedMinutes"),
+        "priority": dto.get("priority"),
+        "deadline": end_dt.isoformat(),
+        "startTime": start_dt.isoformat(),
+        "status": dto.get("status") or "pending",
     }
+
+
+def _extract_auth_token(metadata: dict) -> str | None:
+    for key in ("auth_token", "access_token", "authorization"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
 def _validate_schedule_items(schedule_items: list[ScheduleItem]) -> list[ScheduleItem]:

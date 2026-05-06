@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { UserProfile } from "@/types";
 import { authService } from "@/services/authService";
 
@@ -7,23 +7,37 @@ import { authService } from "@/services/authService";
  * Menangani fetching, loading state, dan sinkronisasi antar komponen.
  */
 export function useUser() {
-  const [user, setUser] = useState<UserProfile | null>({
-    name: "raka",
-    email: "rakafadillah@gmail.com",
-  });
+  // 1. Inisialisasi awal dengan null, bukan hardcode
+  const [user, setUser] = useState<UserProfile | null>(null);
   const [isUserLoading, setIsUserLoading] = useState(true);
 
-  const loadUser = async () => {
+  // Fungsi untuk memanggil API
+  const loadUser = useCallback(async () => {
     setIsUserLoading(true);
     try {
       const userData = await authService.getCurrentUser();
       setUser(userData);
     } catch (error) {
       console.error("Failed to load user:", error);
+      setUser(null); // Bersihkan state jika token expired / gagal
     } finally {
       setIsUserLoading(false);
     }
-  };
+  }, []);
+
+  // Fungsi untuk update state tanpa panggil API (Mencegah Infinite Loop)
+  const syncUserFromStorage = useCallback(() => {
+    try {
+      const storedUser = sessionStorage.getItem("app_user");
+      if (storedUser) {
+        setUser(JSON.parse(storedUser));
+      } else {
+        setUser(null);
+      }
+    } catch (e) {
+      console.error("Error parsing user from session", e);
+    }
+  }, []);
 
   const logout = async () => {
     await authService.logout();
@@ -32,16 +46,17 @@ export function useUser() {
   };
 
   useEffect(() => {
-    // Muat data user saat awal mount
+    // Muat data user dari API saat pertama kali mount
     loadUser();
 
-    // Dengerkan event pembaruan user (misal setelah login/refresh delay)
-    window.addEventListener("user_updated", loadUser);
+    // Dengerkan event pembaruan user (misal dari tab lain / halaman callback)
+    // PENTING: Gunakan syncUserFromStorage, JANGAN loadUser!
+    window.addEventListener("user_updated", syncUserFromStorage);
 
     return () => {
-      window.removeEventListener("user_updated", loadUser);
+      window.removeEventListener("user_updated", syncUserFromStorage);
     };
-  }, []);
+  }, [loadUser, syncUserFromStorage]);
 
   return {
     user,

@@ -56,7 +56,7 @@ export function CounselorApproveBar({
   return (
     <div className="rounded-3xl border border-[#E5E7EB] bg-white p-6 shadow-sm">
       <p className="text-[14px] font-semibold text-[#0A0A0A] mb-4">
-        {payload.message}
+        Kamu mau gimana?
       </p>
       <div className="flex flex-wrap gap-3">
         <button

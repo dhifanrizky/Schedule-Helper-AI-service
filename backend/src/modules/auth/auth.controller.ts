@@ -1,9 +1,17 @@
-import { Controller, Post, Body, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Res,
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+} from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { AuthService } from './auth.service.js';
 import { RegisterDto, LoginDto } from './dto/auth.dto.js';
 import { UseGuards, Req, Get } from '@nestjs/common';
 import { GoogleGuard } from './guard/google.guard.js';
+import { Response } from 'express';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -49,12 +57,14 @@ export class AuthController {
   @Get('google/callback')
   @UseGuards(GoogleGuard)
   @ApiOperation({ summary: 'Google OAuth2 callback URL' })
-  async googleAuthRedirect(@Req() req: any) {
-    // This endpoint handles the callback from Google
-    // req.user will contain the google profile returned by GoogleStrategy
-    const result = await this.authService.googleLogin(req);
+  async googleAuthRedirect(@Req() req: any, @Res() res: Response) {
+    // Tambahkan @Res() res: Response di sini
+    const tokenData = await this.authService.googleLogin(req);
 
-    // For API testing, we return it as JSON
-    return result;
+    // Asumsikan tokenData mengembalikan object { access_token: "..." }
+    const token = tokenData.access_token;
+
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+    return res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
   }
 }
