@@ -8,130 +8,184 @@ from app.graph.agents.helpers import last_message, ai_msg, get_hitl_input, get_r
 from app.graph.types import CategoryType
 
 # ---------------------------------------------------------------------------
-# Agent 2: CounselorAgent
+# Agent 2: CounselorAgent — Sequential Per-Task Version
 #
-# TUGAS:
-#   Lengkapi RawTask dari Router sebelum diteruskan ke Prioritizer.
-#   RawTask yang perlu dilengkapi: title (jika vague) dan description
-#   (jika scope/konteks belum jelas). Field lain (raw_time, category,
-#   raw_input) TIDAK ditanya — bisa diinfer atau memang opsional.
+# ALUR:
+#   Loop 0 (pertama):
+#     - Validasi perasaan user HANYA jika ada ekspresi stres/pusing
+#     - Kalimat penenang singkat
+#     - Tanya task PERTAMA yang belum lengkap (output/hasil + deadline)
 #
-# ALUR PER LOOP:
-#   Step A — Gap check  : evaluasi field mana yang masih kurang
-#   Step B — Draft      : buat respons dengan pertanyaan spesifik
-#   HITL                : pause, kirim draft ke user, tunggu /resume
-#   Jika approved       : enrich + selesai
-#   Jika rejected       : enrich + loop lagi (HANYA tanya yang belum dijawab)
+#   Loop 1..N (selanjutnya):
+#     - Acknowledge jawaban user dengan hangat (tanpa validasi perasaan lagi)
+#     - Enrich task yang baru dijawab
+#     - Kalau masih ada task lain yang belum → tanya task berikutnya
+#     - Kalau semua sudah → tampilkan ringkasan + minta konfirmasi
 #
-# ANTI-LOOP BERULANG:
-#   Gap check WAJIB cek riwayat pertanyaan sebelumnya (asked_questions).
-#   Kalau user sudah jawab → tandai is_complete=True, JANGAN tanya lagi.
-#   Kalau user bilang "ga ada info lain" / "udah itu aja" → is_complete=True.
+#   Loop konfirmasi (all_complete=True):
+#     - User approve → counselor_done=True → lanjut prioritizer
+#     - User ada tambahan/koreksi → enrich + done
 #
-# KOMPONEN RawTask yang bisa dilengkapi Counselor:
-#   - title       : perjelas jika masih vague ("banyak tugas" → "Tugas RPL chapter 3")
-#   - description : isi scope/konteks yang sebelumnya kosong atau "tidak diketahui"
-#   - raw_time    : update HANYA jika user menyebut waktu baru
-#   - category    : update jika konteks berubah
-#   (task_id dan raw_input TIDAK diubah)
+# TASK is_complete = True jika:
+#   - Sudah tahu OUTPUT/HASIL AKHIRNYA apa (laporan, database, presentasi, dll)
+#   - Deadline sudah ada ATAU user konfirmasi belum ada
+#   Tidak perlu: format, jumlah halaman, peserta, detail teknis
+#
+# HITL payload:
+#   { "type": "counselor_chat", "message": "...", "is_confirmation": bool,
+#     "current_task_index": int, "asked_questions": [...] }
+#
+# HITL resume:
+#   { "approved": true/false, "additional_context": "teks balasan user" }
 # ---------------------------------------------------------------------------
 
-MAX_COUNSELOR_LOOPS = 3
+MAX_COUNSELOR_LOOPS = 5
+DEBUG = True
 
 
-# ── Schema Gap Analysis ───────────────────────────────────────────────────────
+def _debug(label: str, data):
+    if DEBUG:
+        print(f"\n[COUNSELOR DEBUG] {label}")
+        print(data)
 
-class TaskGapItem(BaseModel):
+
+# ── Schema ────────────────────────────────────────────────────────────────────
+
+class TaskEnrichment(BaseModel):
     task_id: str
-    title: str
+    updated_title: Optional[str] = Field(
+        default=None,
+        description=(
+            "Perjelas title jika user memberi info spesifik. "
+            "Contoh: 'Tugas Basdat' → 'Bikin Database ERD'. Null jika sudah oke."
+        )
+    )
+    updated_description: Optional[str] = Field(
+        default=None,
+        description=(
+            "Isi dengan GABUNGAN deskripsi lama + info baru. Jangan buang info yang sudah ada."
+            "Tulis: (1) output/hasil akhir yang diketahui, (2) deadline jika ada, "
+            "(3) hal yang masih belum jelas. "
+            "Null HANYA jika user tidak menyebut info baru sama sekali."
+        )
+    )
+    updated_raw_time: Optional[str] = Field(
+        default=None,
+        description=(
+            "Update HANYA jika user menyebut waktu/deadline baru. "
+            "Tulis frasa persis user (misal: 'besok', 'minggu depan'). "
+            "Null jika tidak ada info waktu baru."
+        )
+    )
+    updated_category: Optional[CategoryType] = Field(
+        default=None,
+        description="Update jika konteks berubah. Null jika tidak ada perubahan."
+    )
     is_complete: bool = Field(
         description=(
-            "True jika task sudah punya title yang jelas DAN description yang cukup "
-            "untuk dijadwalkan. True juga jika user sudah menjawab pertanyaan sebelumnya "
-            "tentang task ini (walau singkat), atau user bilang tidak ada info tambahan."
-        )
-    )
-    missing_info: list[str] = Field(
-        default_factory=list,
-        description=(
-            "Hanya isi jika is_complete=False. "
-            "Satu item = satu pertanyaan yang akan ditanyakan ke user. "
-            "JANGAN duplikat pertanyaan yang sudah ada di asked_questions. "
-            "JANGAN tanya: deadline/waktu, durasi, prioritas — itu urusan Prioritizer. "
-            "Yang valid: scope task jika benar-benar tidak jelas sama sekali, "
-            "jenis output jika tidak bisa diinfer sama sekali dari konteks."
+            "True jika task sudah punya: "
+            "(1) output/hasil akhir yang jelas (laporan, database, presentasi, dll) "
+            "DAN (2) deadline sudah ada ATAU user sudah bilang belum ada/tidak tahu. "
+            "True juga jika user jawab singkat atau bilang 'ga tau', 'udah itu aja' — jangan paksa. "
+            "False HANYA jika output task benar-benar tidak bisa diinfer sama sekali."
         )
     )
 
 
-class TaskGapAnalysis(BaseModel):
-    gaps: list[TaskGapItem]
-    overall_complete: bool = Field(
-        description="True jika semua task is_complete=True."
+class CounselorOutput(BaseModel):
+    enrichments: list[TaskEnrichment]
+    all_complete: bool = Field(
+        description="True jika SEMUA task is_complete=True."
     )
-
-
-# ── Schema Draft ──────────────────────────────────────────────────────────────
-
-class CounselorDraft(BaseModel):
-    draft: str = Field(
+    reply: str = Field(
         description=(
-            "Respons ke user. Struktur:\n"
-            "1. Empati singkat (1 kalimat, genuine, tidak generik)\n"
-            "2. Sebutkan semua task yang sudah dipahami\n"
-            "3. JIKA ada yang kurang: tanya SATU hal per task — sebut nama tasknya\n"
-            "4. JIKA semua lengkap: ringkasan singkat semua task (title + info utama)\n"
-            "5. Tutup dengan: 'Kesimpulan ini udah pas, atau mau tambahin sesuatu dulu?'\n"
-            "Bahasa = sama persis dengan user. Maks 7 kalimat. Jangan kasih solusi."
+            "Teks bubble chat ke user. Bahasa SAMA PERSIS dengan user.\n\n"
+            "LOOP PERTAMA (is_first_loop=True di prompt):\n"
+            "  1. Kalau user express stres/pusing: validasi perasaan 1 kalimat yang genuine\n"
+            "     Contoh BAGUS: 'Tenang, kita bedah satu-satu biar kamu ga overwhelmed'\n"
+            "     Contoh JELEK: 'Iya aku tau kamu pusing banget'\n"
+            "  2. Kalau user tidak express stres: langsung ke poin 3\n"
+            "  3. Kalimat penenang singkat + ajakan bantu\n"
+            "     Contoh: 'Aku bantu atur ya, kita mulai dari [task pertama] dulu'\n"
+            "  4. Tanya task PERTAMA: output/hasil + deadline dalam 1-2 kalimat natural\n"
+            "     Contoh: 'Tugas basdat-nya ngerjain apa? (misal: bikin ERD, query SQL, laporan?) "
+            "Terus deadline-nya kapan?'\n\n"
+            "LOOP SELANJUTNYA (bukan first loop, belum all_complete):\n"
+            "  1. Acknowledge jawaban user, 1 kalimat hangat — TANPA validasi perasaan lagi\n"
+            "     Contoh: 'Oke, noted buat [task]!'\n"
+            "  2. Langsung tanya task BERIKUTNYA yang belum lengkap\n"
+            "     Format sama: output/hasil + deadline dalam 1 kalimat\n\n"
+            "LOOP KONFIRMASI (all_complete=True):\n"
+            "  1. Acknowledge jawaban terakhir, 1 kalimat\n"
+            "  2. Tampilkan ringkasan semua task (title + output + deadline)\n"
+            "  3. Tutup dengan: 'Udah bener semua? Atau ada yang mau diubah/ditambahin?'\n\n"
+            "LARANGAN:\n"
+            "  - JANGAN tulis 'Kesimpulan ini udah pas?' di loop non-konfirmasi\n"
+            "  - JANGAN validasi perasaan lebih dari sekali\n"
+            "  - JANGAN tanya lebih dari 1 task per loop\n"
+            "  - JANGAN tanya: durasi, prioritas, peserta, format teknis\n"
+            "  - Maks 5 kalimat total"
+        )
+    )
+    next_incomplete_task_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "task_id dari task BERIKUTNYA yang belum is_complete=True. "
+            "Null jika semua sudah lengkap."
+        )
+    )
+    task_summary: str = Field(
+        description=(
+            "Ringkasan untuk ditampilkan saat konfirmasi akhir. "
+            "Format: '• [Title]: [output/hasil], deadline: [waktu atau belum ada]' per baris."
         )
     )
     bridge: str = Field(
         description=(
             "1-2 kalimat ajakan ke penjadwalan. Ditampilkan HANYA saat approved. "
-            "Sebutkan semua task yang akan dijadwalkan. Bukan pertanyaan."
-        )
-    )
-    task_summary: str = Field(
-        description=(
-            "Ringkasan singkat semua task dalam format yang mudah dibaca user. "
-            "Format: '• [Nama Task]: [info utama yang sudah terkumpul]' per baris. "
-            "Ini ditampilkan saat approved agar user bisa konfirmasi semua data sudah benar. "
-            "Sertakan: title, scope/deskripsi singkat, waktu jika ada. "
-            "Contoh: '• Tugas RPL - Membuat Aplikasi: scope bikin CRUD sederhana, deadline besok'"
+            "Sebutkan semua task. Energik tapi tidak lebay."
         )
     )
 
 
-# ── Schema Enrichment ─────────────────────────────────────────────────────────
+# ── System Prompt ─────────────────────────────────────────────────────────────
 
-class EnrichedTaskItem(BaseModel):
-    task_id: str
-    title: str = Field(description="Perjelas jika sebelumnya vague. Pertahankan jika sudah oke.")
-    description: str = Field(
-        description=(
-            "Update dengan info baru dari user. "
-            "Sertakan: apa yang harus dikerjakan, feeling user, hal yang masih belum jelas. "
-            "Jika user bilang tidak ada info tambahan, tulis deskripsi terbaik dari data yang ada."
-        )
-    )
-    raw_time: Optional[str] = Field(
-        default=None,
-        description="Update HANYA jika user menyebut waktu/deadline baru. Null jika tidak."
-    )
-    category: CategoryType
+SYSTEM_PROMPT = """Kamu adalah teman yang hangat dan helpful yang bantu user melengkapi info tugasnya.
 
+FILOSOFI:
+Kamu tahu user lagi overwhelmed. Tugasmu bukan interogasi — tapi bantu user merasa didengar
+dan pelan-pelan keluarkan info yang diperlukan buat jadwalin tugasnya.
 
-class EnrichedTasksOutput(BaseModel):
-    enriched_tasks: list[EnrichedTaskItem]
+KAPAN TASK DIANGGAP LENGKAP (is_complete=True):
+Task cukup kalau sudah ada DUA hal ini:
+1. Output/hasil akhir yang jelas → "bikin laporan", "buat database ERD", "presentasi 10 menit"
+2. Deadline → sudah disebutkan ATAU user bilang "belum ada", "ga tau", "masih lama"
+
+Yang TIDAK perlu ditanya:
+- Format file, jumlah halaman, template → tidak mempengaruhi penjadwalan
+- Peserta meeting → tidak relevan
+- Cara mengerjakan, tools yang dipakai → urusan user sendiri
+- Prioritas → itu tugas Prioritizer
+
+ATURAN TANYA:
+- Satu task per giliran, jangan bombardir user dengan banyak pertanyaan
+- Tanya output + deadline dalam satu napas yang natural
+- Selalu kasih contoh jawaban dalam kurung
+  BAD: "Bisa ceritain tugasnya lebih detail?"
+  GOOD: "Tugas RPL-nya bikin apa? (misal: aplikasi, laporan, atau presentasi?) Terus deadline-nya kapan?"
+- Kalau user jawab singkat atau ga lengkap tapi ada gambaran → is_complete=True, lanjut
+- Kalau user bilang "ga tau" / "udah itu aja" → is_complete=True, jangan kejar
+
+BAHASA:
+Ikuti persis bahasa user. Santai dan gaul kalau user santai. Formal kalau user formal.
+Jangan terlalu banyak tanda seru. Jangan lebay."""
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 def make_counselor(llm, _interrupt=None):
     interrupt_fn = _interrupt if _interrupt is not None else _langgraph_interrupt
-    gap_llm = llm.with_structured_output(TaskGapAnalysis)
-    draft_llm = llm.with_structured_output(CounselorDraft)
-    enrichment_llm = llm.with_structured_output(EnrichedTasksOutput)
+    counselor_llm = llm.with_structured_output(CounselorOutput)
 
     def run(state: AppState) -> dict:
         user_msg = last_message(state)
@@ -139,12 +193,14 @@ def make_counselor(llm, _interrupt=None):
         previous_hitl = get_hitl_input(state) or {}
         loop_count = len(state.get("counselor_response") or [])
 
+        _debug("LOOP", loop_count)
+        _debug("USER MSG", user_msg)
+        _debug("RAW TASKS (before enrich)", raw_tasks)
+
         # Safety: paksa selesai setelah MAX loop
         if loop_count >= MAX_COUNSELOR_LOOPS:
-            forced_msg = (
-                "Oke, aku udah cukup paham situasimu. "
-                "Yuk kita mulai atur satu per satu!"
-            )
+            _debug("FORCED COMPLETE", f"loop={loop_count}")
+            forced_msg = _build_forced_completion_msg(raw_tasks, user_msg)
             return {
                 **ai_msg(forced_msg),
                 "counselor_response": [forced_msg],
@@ -154,86 +210,99 @@ def make_counselor(llm, _interrupt=None):
             }
 
         additional_context = previous_hitl.get("additional_context", "")
-        # Kumpulkan riwayat pertanyaan yang sudah pernah ditanyakan
+        # FIX bug 2: asked_questions pakai TITLE task, bukan UUID
         asked_questions = previous_hitl.get("asked_questions", [])
+        current_task_index = previous_hitl.get("current_task_index", 0)
+        is_first_loop = loop_count == 0
 
-        # Enrich tasks dulu kalau ada info baru dari loop sebelumnya
-        current_tasks = raw_tasks
+        # FIX bug 1: enrich DULU sebelum bangun prompt
+        # Supaya LLM lihat deskripsi yang sudah terupdate, bukan yang lama
         if additional_context and raw_tasks:
-            current_tasks = _enrich_tasks(
-                enrichment_llm, raw_tasks, additional_context, user_msg
+            raw_tasks = _apply_pre_enrich(raw_tasks, additional_context, current_task_index)
+            _debug("PRE-ENRICHED TASKS", raw_tasks)
+
+        # Prompt ke LLM — sekarang pakai raw_tasks yang sudah dienrich
+        prompt_content = _build_prompt(
+            user_msg=user_msg,
+            raw_tasks=raw_tasks,
+            additional_context=additional_context,
+            asked_questions=asked_questions,
+            current_task_index=current_task_index,
+            is_first_loop=is_first_loop,
+            loop_count=loop_count,
+        )
+        _debug("PROMPT", prompt_content)
+
+        try:
+            output = counselor_llm.invoke([
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt_content},
+            ])
+        except Exception as e:
+            _debug("LLM ERROR", e)
+            output = _fallback_output(raw_tasks, is_first_loop)
+
+        _debug("LLM OUTPUT", output)
+
+        # Apply enrichment dari output LLM ke raw_tasks yang sudah pre-enriched
+        updated_tasks = _apply_enrichments(raw_tasks, output.enrichments)
+        _debug("UPDATED TASKS", updated_tasks)
+
+        # FIX bug 3: cari next_index dari updated_tasks langsung, bukan dari enrichments
+        next_index = _find_next_incomplete_from_tasks(updated_tasks, output.enrichments, current_task_index)
+
+        # FIX bug 2: simpan TITLE task ke asked_questions, bukan UUID
+        new_asked = list(asked_questions)
+        if output.next_incomplete_task_id:
+            # Cari title task berdasarkan task_id
+            asked_title = next(
+                (_get_field(t, "title") for t in updated_tasks
+                 if _get_field(t, "task_id") == output.next_incomplete_task_id),
+                output.next_incomplete_task_id  # fallback ke id jika tidak ketemu
             )
+            if asked_title not in new_asked:
+                new_asked.append(asked_title)
 
-        # Step A: evaluasi gap — dengan konteks pertanyaan yang sudah ditanya
-        gap_analysis = _evaluate_gaps(
-            gap_llm, current_tasks, user_msg, additional_context, asked_questions
-        )
+        is_confirmation = output.all_complete
 
-        # Step B: generate draft dengan data gap eksplisit
-        output = _generate_draft(
-            draft_llm, user_msg, current_tasks, gap_analysis, additional_context
-        )
-
-        has_missing = not gap_analysis.overall_complete
-        missing_per_task = [
-            {"task_id": g.task_id, "title": g.title, "missing": g.missing_info}
-            for g in gap_analysis.gaps
-            if not g.is_complete
-        ]
-
-        # Kumpulkan pertanyaan yang baru ditanyakan di loop ini
-        new_questions = [
-            f"{g.title}: {', '.join(g.missing_info)}"
-            for g in gap_analysis.gaps
-            if not g.is_complete and g.missing_info
-        ]
-        all_asked = asked_questions + new_questions
-
+        # HITL interrupt
         hitl_result = interrupt_fn({
-            "type": "counselor_review",
-            "draft": output.draft,
-            "message": (
-                "Ada info yang perlu dilengkapi. Jawab yuk!"
-                if has_missing
-                else "Semua info sudah lengkap. Lanjut ke penjadwalan?"
-            ),
-            "has_missing_info": has_missing,
-            "missing_per_task": missing_per_task,
-            "asked_questions": all_asked,
+            "type": "counselor_chat",
+            "message": output.reply,
+            "is_confirmation": is_confirmation,
+            "current_task_index": next_index,
+            "asked_questions": new_asked,
         }) or {}
 
         approved = bool(hitl_result.get("approved"))
+        final_context = hitl_result.get("additional_context", "")
 
         if not approved:
             return {
-                **ai_msg(
-                    "Makasih udah mau cerita lebih! "
-                    "Aku update catatannya ya."
-                ),
-                "raw_tasks": current_tasks,
-                "counselor_response": [output.draft],
+                **ai_msg(output.reply),
+                "raw_tasks": updated_tasks,
+                "counselor_response": [output.reply],
                 "counselor_done": False,
                 "hitl_status": "rejected",
                 "hitl_input": {
                     **hitl_result,
-                    "asked_questions": all_asked,  # teruskan riwayat ke loop berikutnya
+                    "asked_questions": new_asked,
+                    "current_task_index": next_index,
                 },
             }
 
-        # Approved — enrich sekali lagi kalau ada context baru dari approved
-        final_context = hitl_result.get("additional_context", "")
-        final_tasks = current_tasks
-        if final_context and current_tasks:
-            final_tasks = _enrich_tasks(
-                enrichment_llm, current_tasks, final_context, user_msg
-            )
+        # Approved — enrich sekali lagi kalau ada info tambahan dari pesan approve
+        final_tasks = updated_tasks
+        if final_context and final_context.strip():
+            final_tasks = _apply_final_context(counselor_llm, updated_tasks, final_context)
+            _debug("FINAL TASKS (after enrich)", final_tasks)
 
-        # Pesan akhir: draft + task summary + bridge
         full_response = (
-            f"{output.draft}\n\n"
-            f"Ini ringkasan task yang akan dijadwalkan:\n{output.task_summary}\n\n"
+            f"{output.reply}\n\n"
+            f"Ini catatan tugasnya:\n{output.task_summary}\n\n"
             f"{output.bridge}"
         )
+
         return {
             **ai_msg(full_response),
             "raw_tasks": final_tasks,
@@ -246,185 +315,231 @@ def make_counselor(llm, _interrupt=None):
     return run
 
 
-# ── Step A: Gap Evaluation ────────────────────────────────────────────────────
+# ── Prompt Builder ────────────────────────────────────────────────────────────
 
-def _evaluate_gaps(
-    gap_llm,
-    raw_tasks: list,
+def _build_prompt(
     user_msg: str,
+    raw_tasks: list,
     additional_context: str,
     asked_questions: list[str],
-) -> TaskGapAnalysis:
+    current_task_index: int,
+    is_first_loop: bool,
+    loop_count: int,
+) -> str:
     task_context = _format_task_context(raw_tasks)
-    extra = f"\nInfo tambahan dari user: {additional_context}" if additional_context else ""
-    asked_str = (
-        "\nPertanyaan yang SUDAH ditanyakan sebelumnya (JANGAN tanya lagi):\n"
-        + "\n".join(f"- {q}" for q in asked_questions)
-        if asked_questions else ""
-    )
+    n_tasks = len(raw_tasks)
 
-    prompt = f"""Evaluasi apakah setiap task sudah cukup untuk dijadwalkan.
+    parts = [
+        f"Pesan user: {user_msg}",
+    ]
 
-Curhatan user: {user_msg}{extra}
+    if additional_context:
+        parts.append(f"Jawaban/info tambahan dari user: {additional_context}")
 
-Tasks:
-{task_context}{asked_str}
+    parts.append(f"\nTotal task terdeteksi: {n_tasks}")
+    parts.append(f"Task list:\n{task_context}")
 
-ATURAN:
-- is_complete = True jika title jelas DAN description cukup menggambarkan apa yang harus dikerjakan
-- is_complete = True jika user sudah menjawab pertanyaan sebelumnya (walau singkat/tidak lengkap)
-- is_complete = True jika user bilang "udah itu aja", "ga ada lagi", "cuma itu" dst
-- missing_info: HANYA isi hal yang benar-benar tidak bisa diinfer sama sekali
-- JANGAN tanya lagi hal yang ada di "Pertanyaan yang SUDAH ditanyakan"
-- JANGAN tanya: waktu/deadline, durasi, prioritas — itu urusan Prioritizer"""
-
-    try:
-        return gap_llm.invoke([
-            {"role": "system", "content": "Evaluasi kelengkapan task untuk penjadwalan."},
-            {"role": "user", "content": prompt},
-        ])
-    except Exception:
-        return TaskGapAnalysis(
-            gaps=[
-                TaskGapItem(
-                    task_id=_get_field(t, "task_id") or "?",
-                    title=_get_field(t, "title") or "Task",
-                    is_complete=True,
-                    missing_info=[],
-                )
-                for t in raw_tasks
-            ],
-            overall_complete=True,
-        )
-
-
-# ── Step B: Draft Generation ──────────────────────────────────────────────────
-
-def _generate_draft(
-    draft_llm,
-    user_msg: str,
-    raw_tasks: list,
-    gap_analysis: TaskGapAnalysis,
-    additional_context: str,
-) -> CounselorDraft:
-    task_context = _format_task_context(raw_tasks)
-    extra = f"\nInfo tambahan dari user: {additional_context}" if additional_context else ""
-
-    incomplete = [g for g in gap_analysis.gaps if not g.is_complete]
-    if incomplete:
-        gap_summary = "Task yang BELUM lengkap — tanyakan ini:\n" + "\n".join(
-            f"- {g.title}: tanyakan → {', '.join(g.missing_info)}"
-            for g in incomplete
-        )
+    if is_first_loop:
+        parts.append("\n[INI LOOP PERTAMA — validasi perasaan jika ada ekspresi stres, lalu tanya task ke-1]")
     else:
-        gap_summary = "Semua task sudah lengkap — buat ringkasan dan minta konfirmasi."
+        parts.append(f"\n[Loop ke-{loop_count + 1}. Task yang baru dijawab index ke-{current_task_index}.]")
+        parts.append("Acknowledge jawaban user dulu, lalu lanjut tanya task berikutnya yang belum lengkap.")
 
-    task_titles = [_get_field(t, "title") for t in raw_tasks if _get_field(t, "title")]
-    task_list_str = ", ".join(task_titles) if task_titles else "tugas-tugasmu"
-
-    prompt = f"""Kamu teman curhat yang empatik dan membantu user melengkapi info tugasnya.
-Bahasa: SAMA dengan user (informal jika user informal).
-
-User: {user_msg}{extra}
-
-Tasks terdeteksi:
-{task_context}
-
-Hasil evaluasi:
-{gap_summary}
-
-INSTRUKSI DRAFT:
-1. Empati genuine 1 kalimat (bukan "Oh ya" atau "Wah")
-2. Sebutkan semua task yang sudah dipahami
-3. Jika ada yang belum lengkap: tanya SATU hal per task yang belum — sebut nama tasknya
-4. Jika semua lengkap: buat ringkasan singkat semua task beserta info yang sudah terkumpul
-5. Tutup dengan: "Kesimpulan ini udah pas, atau mau tambahin sesuatu dulu?"
-
-TASK_SUMMARY (untuk ditampilkan saat approved):
-Buat ringkasan per task dalam format bullet. Sertakan: title, scope, waktu jika ada.
-Contoh: "• Tugas RPL: bikin aplikasi CRUD, deadline besok"
-
-BRIDGE:
-Ajakan konkret ke penjadwalan. Sebutkan "{task_list_str}"."""
-
-    try:
-        return draft_llm.invoke([
-            {"role": "system", "content": "Asisten empatik yang membantu user melengkapi info tugas."},
-            {"role": "user", "content": prompt},
-        ])
-    except Exception:
-        return CounselorDraft(
-            draft=(
-                f"Berat banget ya, {task_list_str} semua numpuk. "
-                "Bisa ceritain lebih detail biar aku bisa bantu? "
-                "Kesimpulan ini udah pas, atau mau tambahin sesuatu dulu?"
-            ),
-            bridge=f"Yuk sekarang kita atur {task_list_str} satu per satu.",
-            task_summary="\n".join(
-                f"• {_get_field(t, 'title') or 'Task'}: {_get_field(t, 'description') or '-'}"
-                for t in raw_tasks
-            ),
+    if asked_questions:
+        parts.append(
+            "\nTask yang sudah ditanyakan (jangan tanya lagi, lanjut ke task berikutnya):\n"
+            + "\n".join(f"- {q}" for q in asked_questions)
         )
+
+    if loop_count >= MAX_COUNSELOR_LOOPS - 1:
+        parts.append(f"\n[LOOP TERAKHIR — set all_complete=True untuk semua task]")
+
+    return "\n".join(parts)
 
 
 # ── Enrichment ────────────────────────────────────────────────────────────────
 
-def _enrich_tasks(
-    enrichment_llm,
-    raw_tasks: list,
-    additional_context: str,
-    original_user_msg: str,
-) -> list:
-    task_context = _format_task_context(raw_tasks)
+def _apply_enrichments(raw_tasks: list, enrichments: list[TaskEnrichment]) -> list:
+    task_map: dict[str, dict] = {
+        _get_field(t, "task_id"): _to_dict(t)
+        for t in raw_tasks
+        if _get_field(t, "task_id")
+    }
 
-    prompt = f"""Update field task berdasarkan info baru dari user.
+    for e in enrichments:
+        tid = e.task_id
+        if tid not in task_map:
+            continue
+        ex = task_map[tid]
 
-ATURAN:
-- Hanya update field yang berubah/bertambah dari info baru
-- Pertahankan data yang sudah valid
-- title: perjelas jika sebelumnya vague dan info baru memungkinkan
-- description: update dengan info baru, sertakan apa yang masih belum diketahui
-- raw_time: update HANYA jika user sebut waktu baru yang spesifik
-- Jika user bilang "udah itu aja" atau tidak ada info baru: pertahankan data lama,
-  hanya update description untuk mencerminkan bahwa ini memang batasnya info yang ada
+        if e.updated_title and e.updated_title.strip():
+            ex["title"] = e.updated_title.strip()
 
-Info awal: {original_user_msg}
-Info baru: {additional_context}
+        if e.updated_description and e.updated_description.strip():
+            ex["description"] = e.updated_description.strip()
 
-Tasks saat ini:
-{task_context}"""
+        if e.updated_raw_time is not None:
+            ex["raw_time"] = e.updated_raw_time.strip() if e.updated_raw_time.strip() else None
+
+        if e.updated_category is not None:
+            ex["category"] = e.updated_category
+
+        task_map[tid] = ex
+
+    return list(task_map.values())
+
+
+def _apply_final_context(counselor_llm, raw_tasks: list, final_context: str) -> list:
+    """Enrich dengan info yang user kasih saat approve (misal koreksi atau tambahan)."""
+
+    class QuickItem(BaseModel):
+        task_id: str
+        updated_description: Optional[str] = Field(default=None)
+        updated_raw_time: Optional[str] = Field(default=None)
+
+    class QuickOut(BaseModel):
+        tasks: list[QuickItem]
 
     try:
-        result = enrichment_llm.invoke([
-            {"role": "system", "content": "Update task berdasarkan info baru. Jangan overwrite data valid."},
-            {"role": "user", "content": prompt},
+        result = counselor_llm.with_structured_output(QuickOut).invoke([
+            {"role": "system", "content": "Update task dengan info koreksi/tambahan dari user. Jangan overwrite data valid yang sudah ada."},
+            {"role": "user", "content": (
+                f"Info koreksi/tambahan: {final_context}\n\n"
+                f"Tasks:\n{_format_task_context(raw_tasks)}"
+            )},
         ])
-        enriched = result.enriched_tasks if hasattr(result, "enriched_tasks") else []
-        if not enriched:
-            return raw_tasks
-
-        task_map = {_get_field(t, "task_id"): _to_dict(t) for t in raw_tasks}
-        for item in enriched:
-            tid = item.task_id
-            if tid not in task_map:
+        task_map = {_get_field(t, "task_id"): _to_dict(t) for t in raw_tasks if _get_field(t, "task_id")}
+        for item in result.tasks:
+            if item.task_id not in task_map:
                 continue
-            existing = task_map[tid]
-            if item.title and item.title.strip():
-                existing["title"] = item.title
-            if item.description and item.description.strip():
-                existing["description"] = item.description
-            if item.raw_time is not None:
-                existing["raw_time"] = item.raw_time
-            if item.category:
-                existing["category"] = item.category
-            task_map[tid] = existing
-
+            ex = task_map[item.task_id]
+            if item.updated_description and item.updated_description.strip():
+                ex["description"] = item.updated_description.strip()
+            if item.updated_raw_time is not None:
+                ex["raw_time"] = item.updated_raw_time.strip() if item.updated_raw_time.strip() else None
+            task_map[item.task_id] = ex
         return list(task_map.values())
     except Exception:
         return raw_tasks
 
 
-# ── Utilities ─────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _find_next_incomplete_index(enrichments: list[TaskEnrichment], current_index: int) -> int:
+    """Cari index task berikutnya yang belum complete, mulai dari current+1."""
+    for i, e in enumerate(enrichments):
+        if i > current_index and not e.is_complete:
+            return i
+    return current_index
+
+
+def _apply_pre_enrich(raw_tasks: list, additional_context: str, current_task_index: int) -> list:
+    """
+    FIX bug 1: Update deskripsi task yang BARU DITANYA (index = current_task_index)
+    dengan jawaban user (additional_context) sebelum prompt dibuat.
+    Ini deterministik — tidak pakai LLM, cukup append ke description yang ada.
+    LLM enrich yang lebih canggih tetap dilakukan via _apply_enrichments setelahnya.
+    """
+    if not raw_tasks or not additional_context:
+        return raw_tasks
+
+    target_idx = min(current_task_index, len(raw_tasks) - 1)
+    result = [_to_dict(t) for t in raw_tasks]
+    target = result[target_idx]
+
+    current_desc = target.get("description") or ""
+    # Append jawaban user ke deskripsi — LLM akan refinement setelahnya
+    if current_desc and additional_context not in current_desc:
+        target["description"] = f"{current_desc}; jawaban user: {additional_context}"
+    elif not current_desc:
+        target["description"] = additional_context
+
+    result[target_idx] = target
+    return result
+
+
+def _find_next_incomplete_from_tasks(
+    updated_tasks: list,
+    enrichments: list[TaskEnrichment],
+    current_index: int,
+) -> int:
+    """
+    FIX bug 3: Cari index task berikutnya yang belum complete.
+    Pakai is_complete dari enrichments yang di-map ke task_id,
+    lalu cari task di updated_tasks mulai dari current_index + 1.
+    """
+    # Buat map task_id -> is_complete dari enrichments
+    complete_map: dict[str, bool] = {e.task_id: e.is_complete for e in enrichments}
+
+    for i, t in enumerate(updated_tasks):
+        if i <= current_index:
+            continue
+        tid = _get_field(t, "task_id")
+        # Kalau tidak ada di complete_map, anggap belum complete
+        if not complete_map.get(tid, False):
+            return i
+
+    return current_index  # semua sudah complete atau tidak ada yang lebih tinggi
+
+
+def _build_forced_completion_msg(raw_tasks: list, user_msg: str) -> str:
+    titles = [_get_field(t, "title") or "task" for t in raw_tasks]
+    task_list = " dan ".join(titles) if len(titles) <= 2 else ", ".join(titles[:-1]) + f", dan {titles[-1]}"
+    return (
+        f"Oke, aku udah catat semuanya. "
+        f"Yuk kita langsung atur jadwal buat {task_list}!"
+    )
+
+
+def _format_task_context(raw_tasks: list) -> str:
+    if not raw_tasks:
+        return "(tidak ada task)"
+    lines = []
+    for i, t in enumerate(raw_tasks):
+        tid = _get_field(t, "task_id") or "?"
+        title = _get_field(t, "title") or "(no title)"
+        desc = _get_field(t, "description") or "(belum ada deskripsi)"
+        raw_time = _get_field(t, "raw_time")
+        category = _get_field(t, "category") or "biasa"
+        time_str = f"deadline: {raw_time}" if raw_time else "deadline: BELUM ADA"
+        lines.append(
+            f"[{i}] task_id={tid} | {title} | kategori: {category} | {time_str}\n"
+            f"     deskripsi: {desc}"
+        )
+    return "\n".join(lines)
+
+
+def _fallback_output(raw_tasks: list, is_first_loop: bool) -> CounselorOutput:
+    titles = [_get_field(t, "title") or "task" for t in raw_tasks]
+    task_list = " dan ".join(titles[:2])
+    first_task = titles[0] if titles else "tugasmu"
+
+    reply = (
+        f"Tenang, aku bantu atur ya. Kita mulai dari {first_task} dulu — "
+        f"kira-kira ngerjain apa dan deadline-nya kapan?"
+        if is_first_loop else
+        f"Makasih, noted! Lanjut ke task berikutnya ya — "
+        f"kira-kira ngerjain apa dan deadline-nya kapan?"
+    )
+
+    return CounselorOutput(
+        enrichments=[
+            TaskEnrichment(
+                task_id=_get_field(t, "task_id") or "?",
+                is_complete=False,
+            )
+            for t in raw_tasks
+        ],
+        all_complete=False,
+        reply=reply,
+        next_incomplete_task_id=_get_field(raw_tasks[0], "task_id") if raw_tasks else None,
+        task_summary="\n".join(
+            f"• {_get_field(t, 'title') or 'Task'}: {(_get_field(t, 'description') or '-')[:60]}"
+            for t in raw_tasks
+        ),
+        bridge=f"Yuk kita jadwalin {task_list} sekarang.",
+    )
+
 
 def _get_field(task, field: str):
     if hasattr(task, field):
@@ -440,21 +555,3 @@ def _to_dict(task) -> dict:
     if isinstance(task, dict):
         return dict(task)
     return {}
-
-
-def _format_task_context(raw_tasks: list) -> str:
-    if not raw_tasks:
-        return "(tidak ada task)"
-    lines = []
-    for t in raw_tasks:
-        tid = _get_field(t, "task_id") or "?"
-        title = _get_field(t, "title") or "(no title)"
-        desc = _get_field(t, "description") or "(belum ada deskripsi)"
-        raw_time = _get_field(t, "raw_time")
-        category = _get_field(t, "category") or "biasa"
-        time_str = f", waktu: {raw_time}" if raw_time else ""
-        lines.append(
-            f"- [{tid}] {title} (kategori: {category}{time_str})\n"
-            f"  deskripsi: {desc}"
-        )
-    return "\n".join(lines)
