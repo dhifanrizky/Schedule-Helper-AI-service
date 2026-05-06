@@ -5,9 +5,10 @@ interface ChatInputProps {
   onChange: (val: string) => void;
   onSubmit: (e: FormEvent) => void;
   disabled: boolean;
+  placeholder?: string;
 }
 
-export function ChatInput({ value, onChange, onSubmit, disabled }: ChatInputProps) {
+export function ChatInput({ value, onChange, onSubmit, disabled, placeholder }: ChatInputProps) {
   return (
     <div className="w-full bg-[#FFFFFF] border-t border-gray-100 p-6 shrink-0 flex justify-center">
       <form
@@ -18,7 +19,7 @@ export function ChatInput({ value, onChange, onSubmit, disabled }: ChatInputProp
           type="text"
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Type your message..."
+          placeholder={placeholder}
           disabled={disabled}
           className="flex-1 bg-transparent border-none focus:outline-none focus:ring-0 text-[#0A0A0A] text-[15px] font-inter"
         />

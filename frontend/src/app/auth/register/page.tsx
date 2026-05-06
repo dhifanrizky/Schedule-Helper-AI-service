@@ -60,7 +60,7 @@ export default function RegisterPage() {
     }
   };
 
-const handleGoogleLogin = () => {
+  const handleGoogleLogin = () => {
     setIsGoogleSubmitting(true);
     setGeneralError("");
 

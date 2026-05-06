@@ -1,9 +1,4 @@
 import { NextRequest } from "next/server";
-export const config = {
-  api: {
-    responseLimit: false, 
-  },
-};
 type IncomingMessage = {
   role?: string;
   content?: string;
