@@ -56,39 +56,40 @@ export function useChat(userEmail?: string) {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStarted, setIsStarted] = useState(false);
-  const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>({
-    type: "task_review",
-    message:
-      "Cek dulu daftar tugas dan draft jadwal ini. Kamu bisa approve, edit, tambah, atau hapus sebelum dijadwalkan.",
-    tasks: [
-      {
-        task_id: "ac45577c-dad4-4215-b6ea-5657a704469f",
-        title: "Klarifikasi banyak tugas yang belum terdefinisi",
-        subtasks: [
-          "Buat daftar singkat semua tugas yang sedang mengganggu pikiran (nama, deskripsi singkat).",
-          "Tanyakan atau catat deadline masing-masing tugas (hari ini, besok, minggu ini, atau tanggal spesifik).",
-          "Identifikasi prioritas tiap tugas (tinggi, sedang, rendah).",
-          "Catat sumber atau orang yang memberi tugas untuk referensi lebih lanjut.",
-          "Susun tabel ringkas di aplikasi catatan/Google Sheet untuk visualisasi.",
-        ],
-        estimated_minutes: 30,
-        deadline: null,
-        priority: 2,
-        category: "biasa",
-        preferred_window: "bebas",
-      },
-    ],
-    proposed_schedule: [
-      {
-        task_id: "ac45577c-dad4-4215-b6ea-5657a704469f",
-        task: "Buat daftar singkat semua tugas yang sedang mengganggu pikiran (nama, deskripsi singkat).",
-        priority: 2,
-        start_time: "2026-05-05T09:00:00",
-        duration_minutes: 30,
-        category: "biasa",
-      },
-    ],
-  });
+  // const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>({
+  //   type: "task_review",
+  //   message:
+  //     "Cek dulu daftar tugas dan draft jadwal ini. Kamu bisa approve, edit, tambah, atau hapus sebelum dijadwalkan.",
+  //   tasks: [
+  //     {
+  //       task_id: "ac45577c-dad4-4215-b6ea-5657a704469f",
+  //       title: "Klarifikasi banyak tugas yang belum terdefinisi",
+  //       subtasks: [
+  //         "Buat daftar singkat semua tugas yang sedang mengganggu pikiran (nama, deskripsi singkat).",
+  //         "Tanyakan atau catat deadline masing-masing tugas (hari ini, besok, minggu ini, atau tanggal spesifik).",
+  //         "Identifikasi prioritas tiap tugas (tinggi, sedang, rendah).",
+  //         "Catat sumber atau orang yang memberi tugas untuk referensi lebih lanjut.",
+  //         "Susun tabel ringkas di aplikasi catatan/Google Sheet untuk visualisasi.",
+  //       ],
+  //       estimated_minutes: 30,
+  //       deadline: null,
+  //       priority: 2,
+  //       category: "biasa",
+  //       preferred_window: "bebas",
+  //     },
+  //   ],
+  //   proposed_schedule: [
+  //     {
+  //       task_id: "ac45577c-dad4-4215-b6ea-5657a704469f",
+  //       task: "Buat daftar singkat semua tugas yang sedang mengganggu pikiran (nama, deskripsi singkat).",
+  //       priority: 2,
+  //       start_time: "2026-05-05T09:00:00",
+  //       duration_minutes: 30,
+  //       category: "biasa",
+  //     },
+  //   ],
+  // });
+    const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>(null);
 
   useEffect(() => {
     try {
