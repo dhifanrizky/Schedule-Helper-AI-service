@@ -26,7 +26,12 @@ const formatTimeRange = (startTime: string, durationMinutes: number) => {
     minutes = Number(rawMinutes);
   }
 
-  if (hours === null || minutes === null || Number.isNaN(hours) || Number.isNaN(minutes)) {
+  if (
+    hours === null ||
+    minutes === null ||
+    Number.isNaN(hours) ||
+    Number.isNaN(minutes)
+  ) {
     return `${startTime} (${durationMinutes} min)`;
   }
 
@@ -50,18 +55,25 @@ export default function DashboardClient() {
     isStarted,
     messagesEndRef,
     handleSend,
-    hitlPayload
+    hitlPayload,
   } = useChat(user?.email);
 
   const {
-    energyLevel, setEnergyLevel,
-    mood, setMood,
-    availableTime, setAvailableTime,
-    isDropdownOpen, setIsDropdownOpen,
+    energyLevel,
+    setEnergyLevel,
+    mood,
+    setMood,
+    availableTime,
+    setAvailableTime,
+    isDropdownOpen,
+    setIsDropdownOpen,
     isAnalyzing,
-    isResult, setIsResult,
-    isEditingSchedule, setIsEditingSchedule,
-    scheduleItems, setScheduleItems
+    isResult,
+    setIsResult,
+    isEditingSchedule,
+    setIsEditingSchedule,
+    scheduleItems,
+    setScheduleItems,
   } = useSchedule();
 
   useEffect(() => {
@@ -70,7 +82,10 @@ export default function DashboardClient() {
 
     const mappedScheduleItems = hitlPayload.proposed_schedule.map((item) => ({
       time: formatTimeRange(item.start_time, item.duration_minutes),
-      title: item.task
+      title: item.task,
+      task_id: item.task_id,
+      priority: item.priority,
+      category: item.category,
     }));
 
     setScheduleItems(mappedScheduleItems);
@@ -83,12 +98,12 @@ export default function DashboardClient() {
       tasks: hitlPayload.tasks.map((task) => ({
         task: task.title,
         priority: task.priority,
-        deadline: task.deadline ?? ""
-      }))
+        deadline: task.deadline ?? "",
+      })),
     });
   };
 
-  if (hitlPayload?.type === "task_review" && isResult) {
+  if (hitlPayload?.type === "task_review") {
     return (
       <ResultState
         scheduleItems={scheduleItems}

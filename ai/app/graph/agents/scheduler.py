@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta
+from typing import cast
 from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field, ValidationError
 
 from app.graph.state import AppState
 from app.graph.agents.helpers import get_proposed_schedule, get_metadata, ai_msg
-from app.graph.types import ScheduleItem
+from app.graph.types import CategoryType, ScheduleItem
 
 # ---------------------------------------------------------------------------
 # Agent 4 / Scheduler
@@ -40,7 +41,7 @@ def make_scheduler(llm, calendar_client):
     def run(state: AppState) -> dict:
         schedule_items = get_proposed_schedule(state)
         metadata = get_metadata(state) or {}
-
+        print("metadata:", metadata)
         if not schedule_items:
             return {
                 **ai_msg("Belum ada proposed_schedule yang bisa dijadwalkan."),
@@ -65,21 +66,27 @@ def make_scheduler(llm, calendar_client):
             )
         except ValueError as err:
             return {
-                **ai_msg("Format jadwal belum valid. Mohon perbaiki dulu sebelum dikirim ke kalender."),
+                **ai_msg(
+                    "Format jadwal belum valid. Mohon perbaiki dulu sebelum dikirim ke kalender."
+                ),
                 "error_message": str(err),
                 "api_status": 400,
                 "api_payload": {"error": str(err)},
             }
         except Exception as err:
             return {
-                **ai_msg("Gagal mengirim jadwal ke Google Calendar. Coba lagi sebentar ya."),
+                **ai_msg(
+                    "Gagal mengirim jadwal ke Google Calendar. Coba lagi sebentar ya."
+                ),
                 "error_message": str(err),
                 "api_status": 500,
                 "api_payload": {"error": str(err)},
             }
 
         return {
-            **ai_msg(f"Semua {len(event_ids)} tugas sudah dijadwalkan di Google Calendar."),
+            **ai_msg(
+                f"Semua {len(event_ids)} tugas sudah dijadwalkan di Google Calendar."
+            ),
             "metadata": {
                 **metadata,
                 "scheduled": True,
@@ -139,15 +146,17 @@ def _build_calendar_payloads_with_llm(
     for item in schedule_items:
         start_dt = _parse_iso_datetime(item["start_time"], timezone_name)
         end_dt = start_dt + timedelta(minutes=int(item["duration_minutes"]))
-        seed_items.append({
-            "task_id": item["task_id"],
-            "task": item["task"],
-            "priority": item["priority"],
-            "category": item["category"],
-            "estimated_minutes": item["duration_minutes"],
-            "start_time": start_dt.isoformat(),
-            "end_time": end_dt.isoformat(),
-        })
+        seed_items.append(
+            {
+                "task_id": item["task_id"],
+                "task": item["task"],
+                "priority": item["priority"],
+                "category": item["category"],
+                "estimated_minutes": item["duration_minutes"],
+                "start_time": start_dt.isoformat(),
+                "end_time": end_dt.isoformat(),
+            }
+        )
 
     prompt = (
         "Ubah daftar proposed_schedule berikut menjadi payload CreateCalendarDto. "
@@ -161,13 +170,15 @@ def _build_calendar_payloads_with_llm(
     )
 
     try:
-        result = structured_llm.invoke([
-            {
-                "role": "system",
-                "content": "Kamu adalah adapter data untuk CreateCalendarDto.",
-            },
-            {"role": "user", "content": prompt},
-        ])
+        result = structured_llm.invoke(
+            [
+                {
+                    "role": "system",
+                    "content": "Kamu adalah adapter data untuk CreateCalendarDto.",
+                },
+                {"role": "user", "content": prompt},
+            ]
+        )
     except Exception:
         return _fallback_calendar_payloads(seed_items)
 
@@ -196,20 +207,22 @@ def _build_calendar_payloads_with_llm(
 def _fallback_calendar_payloads(seed_items: list[dict]) -> list[dict]:
     fallback: list[dict] = []
     for item in seed_items:
-        fallback.append({
-            "title": item["task"],
-            "description": (
-                f"task_id={item['task_id']} | "
-                f"priority={item['priority']} | "
-                f"category={item['category']}"
-            ),
-            "category": item["category"],
-            "estimatedMinutes": item["estimated_minutes"],
-            "priority": item["priority"],
-            "deadline": item["end_time"],
-            "startTime": item["start_time"],
-            "status": "pending",
-        })
+        fallback.append(
+            {
+                "title": item["task"],
+                "description": (
+                    f"task_id={item['task_id']} | "
+                    f"priority={item['priority']} | "
+                    f"category={item['category']}"
+                ),
+                "category": item["category"],
+                "estimatedMinutes": item["estimated_minutes"],
+                "priority": item["priority"],
+                "deadline": item["end_time"],
+                "startTime": item["start_time"],
+                "status": "pending",
+            }
+        )
 
     return fallback
 
@@ -271,7 +284,9 @@ def _validate_schedule_items(schedule_items: list[ScheduleItem]) -> list[Schedul
 
         missing = required_keys - set(item.keys())
         if missing:
-            raise ValueError(f"Item ke-{idx} missing field: {', '.join(sorted(missing))}.")
+            raise ValueError(
+                f"Item ke-{idx} missing field: {', '.join(sorted(missing))}."
+            )
 
         task = str(item.get("task") or "").strip()
         if not task:
@@ -294,15 +309,19 @@ def _validate_schedule_items(schedule_items: list[ScheduleItem]) -> list[Schedul
         if priority not in [1, 2, 3]:
             raise ValueError(f"Item ke-{idx} priority harus 1, 2, atau 3.")
 
-        category = str(item.get("category") or "biasa").strip() or "biasa"
-
-        normalized.append({
-            "task_id": task_id,
-            "task": task,
-            "priority": priority,
-            "start_time": str(item["start_time"]),
-            "duration_minutes": duration,
-            "category": category,
-        })
+        category = cast(
+            CategoryType, str(item.get("category") or "biasa").strip() or "biasa"
+        )
+        
+        normalized.append(
+            {
+                "task_id": task_id,
+                "task": task,
+                "priority": priority,
+                "start_time": str(item["start_time"]),
+                "duration_minutes": duration,
+                "category": category,
+            }
+        )
 
     return normalized

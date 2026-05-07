@@ -34,7 +34,7 @@ class BackendCalendarClient:
 
     def list_schedules(self, token: str | None = None) -> list[dict]:
         response = self._client.get(
-            f"{self.base_url}/calendar",
+            f"{self.base_url}/api/calendar",
             headers=self._build_headers(token),
         )
         data = self._handle_response(response)
@@ -42,7 +42,7 @@ class BackendCalendarClient:
 
     def get_schedule(self, schedule_id: str, token: str | None = None) -> dict:
         response = self._client.get(
-            f"{self.base_url}/calendar/{schedule_id}",
+            f"{self.base_url}/api/calendar/{schedule_id}",
             headers=self._build_headers(token),
         )
         data = self._handle_response(response)
@@ -50,7 +50,7 @@ class BackendCalendarClient:
 
     def create_schedule(self, dto: dict, token: str | None = None) -> dict:
         response = self._client.post(
-            f"{self.base_url}/calendar",
+            f"{self.base_url}/api/calendar",
             headers=self._build_headers(token),
             json=dto,
         )
@@ -59,7 +59,7 @@ class BackendCalendarClient:
 
     def update_schedule(self, schedule_id: str, dto: dict, token: str | None = None) -> dict:
         response = self._client.patch(
-            f"{self.base_url}/calendar/{schedule_id}",
+            f"{self.base_url}/api/calendar/{schedule_id}",
             headers=self._build_headers(token),
             json=dto,
         )
@@ -68,7 +68,7 @@ class BackendCalendarClient:
 
     def delete_schedule(self, schedule_id: str, token: str | None = None) -> dict:
         response = self._client.delete(
-            f"{self.base_url}/calendar/{schedule_id}",
+            f"{self.base_url}/api/calendar/{schedule_id}",
             headers=self._build_headers(token),
         )
         data = self._handle_response(response)

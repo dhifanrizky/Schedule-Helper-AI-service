@@ -39,8 +39,8 @@ export function ResultState({
   ];
 
   const getPriorityLabel = (priority: number) => {
-    if (priority >= 4) return "High";
-    if (priority >= 3) return "Medium";
+    if (priority === 1) return "High";
+    if (priority === 2) return "Medium";
     return "Low";
   };
 
@@ -83,7 +83,7 @@ export function ResultState({
 
   return (
     <main className="flex-1 flex flex-col h-full bg-[#FFFFFF] overflow-y-auto">
-      <div className="w-full max-w-[1000px] mx-auto px-10 py-12 flex flex-col items-center">
+      <div className="w-full max-w-250 mx-auto px-10 py-12 flex flex-col items-center">
         {/* Header */}
         <div className="text-center mb-10">
           <h1 className="text-[28px] font-bold text-[#0A0A0A] font-inter mb-2">Your Personalized Schedule</h1>
@@ -92,16 +92,16 @@ export function ResultState({
 
         <div className="w-full max-w-3xl flex flex-col gap-6">
           {/* Top Priorities */}
-          <div className="bg-white border border-[#E5E7EB] rounded-[16px] p-6 shadow-sm">
+          <div className="bg-white border border-[#E5E7EB] rounded-2xl p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
-              <svg className="w-[18px] h-[18px] text-[#DC2626]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <svg className="w-4.5 h-4.5 text-[#DC2626]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path>
               </svg>
               <h3 className="text-[16px] font-semibold text-[#0A0A0A] font-inter">Top Priorities</h3>
             </div>
             <div className="flex flex-col gap-4">
               {topPriorities.map((item, idx) => (
-                <div key={idx} className="border border-[#E5E7EB] rounded-[12px] p-5 flex flex-col gap-2">
+                <div key={idx} className="border border-[#E5E7EB] rounded-xl p-5 flex flex-col gap-2">
                   <div className="flex justify-between items-start">
                     <h4 className="text-[15px] font-medium text-[#0A0A0A] font-inter">{item.title}</h4>
                     <span className={`text-[12px] font-medium px-2.5 py-1 rounded-full font-inter ${
@@ -118,14 +118,14 @@ export function ResultState({
           </div>
 
           {/* Quick Wins */}
-          <div className="bg-white border border-[#E5E7EB] rounded-[16px] p-6 shadow-sm">
+          <div className="bg-white border border-[#E5E7EB] rounded-2xl p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
-              <img src="/images-dashboard/Quick%20Wins.webp" alt="Quick Wins" className="w-[18px] h-[18px] object-contain" />
+              <img src="/images-dashboard/Quick%20Wins.webp" alt="Quick Wins" className="w-4.5 h-4.5 object-contain" />
               <h3 className="text-[16px] font-semibold text-[#0A0A0A] font-inter">Quick Wins</h3>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {quickWins.map((task, idx) => (
-                <div key={idx} className="border border-[#E5E7EB] rounded-[12px] p-4 flex items-center gap-4">
+                <div key={idx} className="border border-[#E5E7EB] rounded-xl p-4 flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-[#F3E8FF] flex items-center justify-center shrink-0">
                     <img src="/images-dashboard/Ceklis.webp" alt="Check" className="w-full h-full object-contain scale-110" />
                   </div>
@@ -139,14 +139,14 @@ export function ResultState({
           </div>
 
           {/* Today's Schedule */}
-          <div className="bg-white border border-[#E5E7EB] rounded-[16px] p-6 shadow-sm">
+          <div className="bg-white border border-[#E5E7EB] rounded-2xl p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-6">
-              <img src="/images-dashboard/Schedule.webp" alt="Schedule" className="w-[18px] h-[18px] object-contain opacity-70" />
+              <img src="/images-dashboard/Schedule.webp" alt="Schedule" className="w-4.5 h-4.5 object-contain opacity-70" />
               <h3 className="text-[16px] font-semibold text-[#0A0A0A] font-inter">Proposed Schedule</h3>
             </div>
             <div className="flex flex-col gap-2.5">
               {scheduleItems.map((item, idx) => (
-                <div key={idx} className="border border-[#E5E7EB] bg-[#F9FAFB] rounded-[10px] px-5 py-3 flex items-center min-h-[52px]">
+                <div key={idx} className="border border-[#E5E7EB] bg-[#F9FAFB] rounded-[10px] px-5 py-3 flex items-center min-h-13">
                   {isEditingSchedule ? (
                     <div className="flex items-center gap-4 w-full">
                       <input
@@ -158,7 +158,7 @@ export function ResultState({
                           newItems[idx].time = val;
                           setScheduleItems(newItems);
                         }}
-                        className="w-[140px] text-[14px] text-[#717182] border rounded px-2 py-1 outline-none focus:border-[#8A38F5]"
+                        className="w-35 text-[14px] text-[#717182] border rounded px-2 py-1 outline-none focus:border-[#8A38F5]"
                       />
                       <input
                         value={item.title}
@@ -172,7 +172,7 @@ export function ResultState({
                     </div>
                   ) : (
                     <>
-                      <span className="w-[140px] text-[14px] text-[#717182] font-inter">{item.time}</span>
+                      <span className="w-35 text-[14px] text-[#717182] font-inter">{item.time}</span>
                       <span className="text-[14px] text-[#0A0A0A] font-medium font-inter">{item.title}</span>
                     </>
                   )}
@@ -182,9 +182,9 @@ export function ResultState({
           </div>
 
           {/* AI Reasoning */}
-          <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-[16px] p-6 shadow-sm">
+          <div className="bg-[#F9FAFB] border border-[#E5E7EB] rounded-2xl p-6 shadow-sm">
             <div className="flex items-center gap-3 mb-4">
-              <img src="/images-dashboard/AI%20Reasoning.webp" alt="AI Reasoning" className="w-[18px] h-[18px] object-contain" />
+              <img src="/images-dashboard/AI%20Reasoning.webp" alt="AI Reasoning" className="w-4.5 h-4.5 object-contain" />
               <h3 className="text-[16px] font-semibold text-[#0A0A0A] font-inter">AI Reasoning</h3>
             </div>
             <p className="text-[14px] text-[#717182] leading-relaxed font-inter">
@@ -198,21 +198,21 @@ export function ResultState({
               onClick={onApprove}
               className="bg-[#8A38F5] text-white px-5 py-3 rounded-xl text-[14px] font-medium flex items-center gap-2 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
             >
-              <img src="/images-dashboard/Approved.webp" className="w-[18px] h-[18px] object-contain" alt="Approve" />
+              <img src="/images-dashboard/Approved.webp" className="w-4.5 h-4.5 object-contain" alt="Approve" />
               Approve & Save Plan
             </button>
             <button
               onClick={() => setIsEditingSchedule(!isEditingSchedule)}
               className="bg-white border border-[#E5E7EB] text-[#0A0A0A] px-5 py-3 rounded-xl text-[14px] font-medium flex items-center gap-2 shadow-sm cursor-pointer hover:bg-gray-50 transition-colors"
             >
-              <img src="/images-dashboard/Edit.webp" className="w-[18px] h-[18px]" alt="Edit" />
+              <img src="/images-dashboard/Edit.webp" className="w-4.5 h-4.5" alt="Edit" />
               {isEditingSchedule ? "Save Edits" : "Edit Plan"}
             </button>
             <button
               onClick={handleRegenerate}
               className="bg-white border border-[#E5E7EB] text-[#0A0A0A] px-5 py-3 rounded-xl text-[14px] font-medium flex items-center gap-2 shadow-sm cursor-pointer hover:bg-gray-50 transition-colors"
             >
-              <img src="/images-dashboard/Regenerate.webp" className="w-[18px] h-[18px]" alt="Regenerate" />
+              <img src="/images-dashboard/Regenerate.webp" className="w-4.5 h-[18px]" alt="Regenerate" />
               Regenerate
             </button>
           </div>

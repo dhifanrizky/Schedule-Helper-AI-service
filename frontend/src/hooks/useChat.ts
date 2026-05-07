@@ -175,7 +175,8 @@ export function useChat(userEmail?: string) {
             const execData = JSON.parse(execMatch[1]) as ExecutionComplete;
             if (execData.status === "waiting_hitl" && execData.hitl_payload) {
               setHitlPayload(execData.hitl_payload);
-
+              console.log(execData);
+              console.log(hitlPayload)
               // Jika ada pesan untuk user, jadikan pesan ini sebagai teks pengganti
               if (execData.hitl_payload.message) {
                 replacementText = execData.hitl_payload.message;

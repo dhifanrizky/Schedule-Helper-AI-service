@@ -20,25 +20,28 @@ export type UserProfile = {
 // Satu item dalam daftar riwayat jadwal (History page)
 // === INTEGRASI BE: Sesuaikan dengan response GET /api/schedules/history ===
 export type HistoryItem = {
-  id: string;         // ID unik jadwal untuk routing ke halaman detail
-  title: string;      // Judul sesi (ringkasan dari chat user)
-  date: string;       // Tanggal dibuat (format string dari backend)
+  id: string; // ID unik jadwal untuk routing ke halaman detail
+  title: string; // Judul sesi (ringkasan dari chat user)
+  date: string; // Tanggal dibuat (format string dari backend)
   priorities: number; // Jumlah tugas prioritas tinggi
-  quickWins: number;  // Jumlah tugas quick win
-  status: string;     // Status: 'completed' | 'in_progress' | 'cancelled'
+  quickWins: number; // Jumlah tugas quick win
+  status: string; // Status: 'completed' | 'in_progress' | 'cancelled'
 };
 
 // Satu item dalam jadwal harian (Today's Schedule di Result page)
 // === INTEGRASI BE: Sesuaikan dengan field timeline[] dari /api/schedules/generate ===
 export type ScheduleItem = {
-  time: string;  // Contoh: "9:00 - 9:25"
-  title: string; // Contoh: "Quick Wins Session"
+  task_id: string;
+  title: string;
+  priority: number;
+  time: string;
+  category: string;
 };
 
 // Payload yang dikirim saat user menekan "Generate My Schedule"
 // === INTEGRASI BE: Kirim ke POST /api/schedules/generate ===
 export type QuestionnairePayload = {
   energyLevel: number; // 0 - 100 (0 = Rendah, 100 = Tinggi)
-  mood: number;        // 0 - 100 (0 = Happy, 100 = Stres)
+  mood: number; // 0 - 100 (0 = Happy, 100 = Stres)
   availableTime: string; // Contoh: "2 - 4 Hours"
 };
