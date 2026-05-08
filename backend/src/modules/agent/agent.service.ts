@@ -1,16 +1,18 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import {
   ConflictException,
   Injectable,
+  BadRequestException,
   NotFoundException,
+  ServiceUnavailableException,
+  InternalServerErrorException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ChatDto } from './dto/chat.dto';
 import { PrismaService } from '../prisma/prisma.service';
-import {
-  BadRequestException,
-  InternalServerErrorException,
-} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { RawTask } from './types/agent-output.type';
+import axios from 'axios';
 
 @Injectable()
 export class AgentService {
@@ -177,8 +179,86 @@ export class AgentService {
     return `This action returns all agent`;
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} agent`;
+  async findThread(threadId: string) {
+    try {
+      if (!threadId?.trim()) {
+        throw new BadRequestException({
+          success: false,
+          message: 'thread_id wajib diisi',
+        });
+      }
+
+      const [fastApiResponse, messages] = await Promise.all([
+        axios.get(
+          `${process.env.AI_API ?? 'http://localhost:8000'}/state/${threadId}`,
+        ),
+        this.prisma.message.findMany({
+          where: { sessionId: threadId },
+          orderBy: { createdAt: 'asc' },
+        }),
+      ]);
+
+      return {
+        success: true,
+        message: 'Berhasil mengambil data thread',
+        data: {
+          hitl: fastApiResponse.data,
+          messages,
+        },
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const axiosError = error;
+
+        if (axiosError.response) {
+          const status = axiosError.response.status;
+          const data = axiosError.response.data;
+
+          if (status === 404) {
+            throw new NotFoundException({
+              success: false,
+              message: 'Thread tidak ditemukan',
+              error: data,
+            });
+          }
+
+          if (status === 400) {
+            throw new BadRequestException({
+              success: false,
+              message: 'Request tidak valid',
+              error: data,
+            });
+          }
+
+          if (status === 401) {
+            throw new UnauthorizedException({
+              success: false,
+              message: 'Unauthorized',
+              error: data,
+            });
+          }
+
+          throw new ServiceUnavailableException({
+            success: false,
+            message: 'AI service mengembalikan error',
+            error: data,
+          });
+        }
+
+        if (axiosError.request) {
+          throw new ServiceUnavailableException({
+            success: false,
+            message: 'AI service tidak dapat dihubungi',
+          });
+        }
+      }
+
+      throw new InternalServerErrorException({
+        success: false,
+        message: 'Terjadi kesalahan pada server',
+        error: error instanceof Error ? error.message : error,
+      });
+    }
   }
 
   update(id: number) {

@@ -3,6 +3,7 @@ import { FormEvent, useState } from "react";
 import { ResumeData } from "@/hooks/useChat";
 import { UserProfile } from "@/types";
 import { QuestionnaireCard } from "./QuestionnaireCard";
+import { removeChatSession } from "@/utils/removeChatMsgs";
 
 interface StartStateProps {
   user: UserProfile | null;
@@ -14,7 +15,11 @@ interface StartStateProps {
   handleSend: (
     e: FormEvent | null,
     resumeData?: ResumeData,
-    questionnaireData?: { energyLevel: number; mood: number; availableTime: string }
+    questionnaireData?: {
+      energyLevel: number;
+      mood: number;
+      availableTime: string;
+    },
   ) => void;
   energyLevel: number;
   setEnergyLevel: (val: number) => void;
@@ -41,10 +46,11 @@ export function StartState({
   availableTime,
   setAvailableTime,
   isDropdownOpen,
-  setIsDropdownOpen
+  setIsDropdownOpen,
 }: StartStateProps) {
   const [isQuestionnaireVisible, setIsQuestionnaireVisible] = useState(true);
-  const [isQuestionnaireCompleted, setIsQuestionnaireCompleted] = useState(false);
+  const [isQuestionnaireCompleted, setIsQuestionnaireCompleted] =
+    useState(false);
 
   const handleFirstMessageSubmit = (event: FormEvent | null) => {
     handleSend(event, undefined, { energyLevel, mood, availableTime });
@@ -61,7 +67,7 @@ export function StartState({
         <Link
           href="/"
           onClick={() => {
-            sessionStorage.removeItem("chat_messages");
+            removeChatSession();
           }}
           className="text-[20px] font-bold text-[#0A0A0A] cursor-pointer no-underline"
         >
@@ -82,7 +88,9 @@ export function StartState({
         <h1 className="w-45.75 mx-auto text-[40px] font-bold text-[#8A38F5] leading-6 mb-6 [text-shadow:0px_4px_4px_rgba(0,0,0,0.25)]">
           Hi There!
         </h1>
-        <p className={`w-75 mx-auto text-[16px] font-normal text-[#0A0A0A] leading-6 ${isQuestionnaireVisible ? "mb-2" : "mb-10"} [text-shadow:0px_4px_4px_rgba(0,0,0,0.25)]`}>
+        <p
+          className={`w-75 mx-auto text-[16px] font-normal text-[#0A0A0A] leading-6 ${isQuestionnaireVisible ? "mb-2" : "mb-10"} [text-shadow:0px_4px_4px_rgba(0,0,0,0.25)]`}
+        >
           Hi! I'm here to help organize your tasks
         </p>
 
@@ -136,8 +144,6 @@ export function StartState({
             </form>
           </div>
         )}
-
-
       </main>
     </div>
   );

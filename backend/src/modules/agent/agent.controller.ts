@@ -168,13 +168,8 @@ export class AgentController {
     }
   }
 
-  @Get()
-  findAll() {
-    return this.agentService.findAll();
-  }
-
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.agentService.findOne(+id);
+  @Get(':thread_id')
+  async findThread(@Param('thread_id') threadId: string) {
+    return this.agentService.findThread(threadId);
   }
 }

@@ -1,4 +1,5 @@
 import { Message } from "@/types";
+import { removeChatSession } from "@/utils/removeChatMsgs";
 
 // =============================================================
 // CHAT SERVICE: Mengelola pengiriman pesan dan riwayat chat
@@ -61,7 +62,7 @@ export const chatService = {
    * Menghapus seluruh riwayat chat.
    */
   clearChat(): void {
-    sessionStorage.removeItem("chat_messages");
+    removeChatSession();
     window.dispatchEvent(new Event("chat_updated"));
   }
 };

@@ -4,6 +4,7 @@ import { useState, useRef, FormEvent, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Message, QuestionnairePayload } from "@/types";
 import { buildUserContent } from "@/utils/chatPayload";
+import { API_URL, APP_TOKEN } from "@/utils/const";
 
 const THREAD_ID_PATTERN = /\x00THREAD_ID:([^\x00]+)\x00/;
 const EXECUTION_COMPLETE_PATTERN = /\x00EXECUTION_COMPLETE:([\s\S]+?)\x00/;
@@ -31,6 +32,7 @@ export type ProposedSchedule = {
   duration_minutes: number;
   category: string;
 };
+
 export type PrioritizerTask = {
   task_id: string;
   title: string;
@@ -63,6 +65,22 @@ export function useChat(userEmail?: string) {
   const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>(null);
 
   useEffect(() => {
+    if (!hitlPayload && !messages?.length) return;
+
+    console.group("UPDATED STATE");
+
+    console.group("HITL PAYLOAD");
+    console.log(hitlPayload);
+    console.groupEnd();
+
+    console.group("MESSAGES");
+    console.table(messages);
+    console.groupEnd();
+
+    console.groupEnd();
+  }, [hitlPayload, messages]);
+
+  useEffect(() => {
     try {
       const saved = sessionStorage.getItem("chat_messages");
       if (saved) {
@@ -74,6 +92,59 @@ export function useChat(userEmail?: string) {
       /* ignore */
     }
   }, []);
+
+  useEffect(() => {
+    const current = searchParams.get("thread_id");
+
+    if (!current) {
+      sessionStorage.removeItem("chat_messages");
+      setMessages([]);
+      setIsStarted(false);
+      return;
+    }
+
+    const loadThread = async () => {
+      try {
+        const response = await fetch(`${API_URL}/agent/${current}`, {
+          headers: {
+            Authorization: `Bearer ${APP_TOKEN}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error("Gagal mengambil thread");
+        }
+
+        const result = await response.json();
+
+        const { hitl, messages } = result.data;
+
+        if (hitl?.hitl_payload) {
+          setHitlPayload(hitl.hitl_payload);
+        }
+
+        if (Array.isArray(messages)) {
+          const formattedMessages: Message[] = messages
+            .filter((msg) => msg?.content?.trim() !== "")
+            .map((msg) => ({
+              role: msg.role || "system",
+              content: msg.content,
+            }));
+
+          setMessages(formattedMessages);
+
+          sessionStorage.setItem(
+            "chat_messages",
+            JSON.stringify(formattedMessages),
+          );
+        }
+      } catch (error) {
+        console.error("Gagal mengambil thread:", error);
+      }
+    };
+
+    loadThread();
+  }, [searchParams]);
 
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -154,7 +225,10 @@ export function useChat(userEmail?: string) {
               setHitlPayload(null);
             }
           } catch (e) {
-            console.error("Gagal memparsing JSON Execution Complete (Valid Token):", e);
+            console.error(
+              "Gagal memparsing JSON Execution Complete (Valid Token):",
+              e,
+            );
           }
         }
 
@@ -172,7 +246,10 @@ export function useChat(userEmail?: string) {
             setHitlPayload(null);
           }
         } catch (e) {
-          console.error("Gagal memparsing JSON Execution Complete (Leaked):", e);
+          console.error(
+            "Gagal memparsing JSON Execution Complete (Leaked):",
+            e,
+          );
         }
         return "";
       });

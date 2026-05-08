@@ -106,4 +106,10 @@ export class UpdateCalendarDto {
   @IsString()
   @IsOptional()
   status?: string;
+
+  @ApiPropertyOptional({ example: ['Siapkan materi', 'Hadir meeting'] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  subtasks?: string[];
 }

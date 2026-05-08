@@ -648,6 +648,7 @@ def build_proposed_schedule(task_breakdown: list[TaskBreakdown]) -> list[Schedul
             "start_time": minutes_to_iso(start_time_minutes, base_date),
             "duration_minutes": int(item["estimated_minutes"]),
             "category": item["category"],
+            "subtasks": item["subtasks"]
         })
 
         current_time = start_time_minutes + int(item["estimated_minutes"]) + 10

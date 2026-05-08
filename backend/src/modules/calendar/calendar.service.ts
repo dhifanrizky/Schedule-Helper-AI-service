@@ -5,10 +5,7 @@ import { google } from 'googleapis';
 import { ConfigService } from '@nestjs/config';
 
 /* eslint-disable
-  @typescript-eslint/no-unsafe-assignment,
-  @typescript-eslint/no-unsafe-call,
-  @typescript-eslint/no-unsafe-member-access,
-  @typescript-eslint/no-unsafe-return
+  @typescript-eslint/no-unsafe-assignment
 */
 @Injectable()
 export class CalendarService {
@@ -60,8 +57,8 @@ export class CalendarService {
    */
   private getPriorityColor(priority?: number | null): string {
     if (priority === 1) return '11'; // Tomato - merah
-    if (priority === 2) return '5';  // Banana - kuning
-    return '2';                       // Sage - hijau
+    if (priority === 2) return '5'; // Banana - kuning
+    return '2'; // Sage - hijau
   }
 
   async findAll(userId: string) {
@@ -191,6 +188,7 @@ export class CalendarService {
         status: dto.status || 'pending',
         googleEventId,
         googleTaskId,
+        subtasks: dto.subtasks,
       },
     });
   }
@@ -232,6 +230,7 @@ export class CalendarService {
         deadline: dto.deadline ? new Date(dto.deadline) : undefined,
         startTime: dto.startTime ? new Date(dto.startTime) : undefined,
         status: dto.status,
+        subtasks: dto.subtasks,
       },
     });
   }

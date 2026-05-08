@@ -1,10 +1,11 @@
-import { FormEvent, useEffect } from "react";
-import { Message } from "@/types";
-import { HitlPayload, ResumeData } from "@/hooks/useChat";
+import { Dispatch, FormEvent, SetStateAction, useEffect } from "react";
+import { Message, ScheduleItem } from "@/types";
+import { HitlPayload, PrioritizerTask, ResumeData } from "@/hooks/useChat";
 import { ChatMessage } from "./ChatMessage";
 import { TypingIndicator } from "./TypingIndicator";
 import { ChatInput } from "./ChatInput";
 import { CounselorApproveBar } from "./CounselorApproveBar";
+import { ResultState } from "./ResultState";
 
 interface ChatStateProps {
   messages: Message[];
@@ -22,6 +23,14 @@ interface ChatStateProps {
   ) => void;
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   hitlPayload: HitlPayload | null;
+  scheduleItems: ScheduleItem[];
+  setScheduleItems: Dispatch<SetStateAction<ScheduleItem[]>>;
+  isEditingSchedule: boolean;
+  setIsEditingSchedule: Dispatch<SetStateAction<boolean>>;
+  setIsResult: Dispatch<SetStateAction<boolean>>;
+  setIsAnalyzing: Dispatch<SetStateAction<boolean>>;
+  prioritizerTasks: PrioritizerTask[] | undefined;
+  onApprove: () => {};
 }
 
 export function ChatState({
@@ -32,6 +41,14 @@ export function ChatState({
   handleSend,
   messagesEndRef,
   hitlPayload,
+  scheduleItems,
+  setScheduleItems,
+  isEditingSchedule,
+  setIsEditingSchedule,
+  setIsResult,
+  setIsAnalyzing,
+  prioritizerTasks,
+  onApprove,
 }: ChatStateProps) {
   // Auto-scroll logic inside component
   useEffect(() => {
@@ -83,6 +100,18 @@ export function ChatState({
                     }
                   />
                 )}
+              {hitlPayload?.type === "task_review" && (
+                <ResultState
+                  scheduleItems={scheduleItems}
+                  setScheduleItems={setScheduleItems}
+                  isEditingSchedule={isEditingSchedule}
+                  setIsEditingSchedule={setIsEditingSchedule}
+                  setIsResult={setIsResult}
+                  setIsAnalyzing={setIsResult}
+                  prioritizerTasks={hitlPayload.tasks}
+                  onApprove={onApprove}
+                />
+              )}
             </div>
           ))}
 

@@ -15,6 +15,7 @@ class ScheduleItem(TypedDict):
     start_time: str
     duration_minutes: int
     category: CategoryType
+    subtasks: list[str]
 
 class RawTask(BaseModel):
     task_id: str = Field(

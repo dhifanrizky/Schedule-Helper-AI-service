@@ -153,6 +153,7 @@ def make_scheduler(llm=None, calendar_client=None):
                     "error": str(err),
                     "retryable": True,
                 },
+                "status": "waiting_hitl",
                 "hitl_status": "pending", # Set ke pending agar user bisa resume lagi
                 "final_message": None,
             }
@@ -256,6 +257,7 @@ def _validate_schedule_items(schedule_items: list[ScheduleItem]) -> list[Schedul
             "start_time": str(item["start_time"]),
             "duration_minutes": duration,
             "category": category,
+            "subtasks": item["subtasks"]
         })
 
     return normalized_items
@@ -284,6 +286,7 @@ def _build_calendar_payloads(schedule_items: list[ScheduleItem], metadata: dict)
             "deadline": end_dt.isoformat(),
             "startTime": start_dt.isoformat(),
             "status": "pending",
+            "subtasks": item["subtasks"]
         })
     return payloads
 

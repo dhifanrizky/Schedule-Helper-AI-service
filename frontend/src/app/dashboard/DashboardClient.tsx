@@ -9,8 +9,7 @@ import { AnalyzingState } from "@/components/dashboard/AnalyzingState";
 import { ResultState } from "@/components/dashboard/ResultState";
 import { ChatState } from "@/components/dashboard/ChatState";
 import { CreateCalendarPayload } from "@/types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+import { API_URL, APP_TOKEN } from "@/utils/const";
 
 const formatTimeRange = (startTime: string, durationMinutes: number) => {
   let hours: number | null = null;
@@ -104,6 +103,7 @@ export default function DashboardClient() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
+              Authorization: `Bearer ${APP_TOKEN}`,
             },
             body: JSON.stringify({
               title: task.title,
@@ -130,21 +130,6 @@ export default function DashboardClient() {
       console.error("Error saving tasks to calendar:", error);
     }
   };
-
-  if (hitlPayload?.type === "task_review") {
-    return (
-      <ResultState
-        scheduleItems={scheduleItems}
-        setScheduleItems={setScheduleItems}
-        isEditingSchedule={isEditingSchedule}
-        setIsEditingSchedule={setIsEditingSchedule}
-        setIsResult={setIsResult}
-        setIsAnalyzing={setIsResult}
-        prioritizerTasks={hitlPayload.tasks}
-        onApprove={handleConfirmPriorities}
-      />
-    );
-  }
 
   if (isAnalyzing) {
     return <AnalyzingState />;
@@ -181,6 +166,16 @@ export default function DashboardClient() {
       handleSend={handleSend}
       messagesEndRef={messagesEndRef}
       hitlPayload={hitlPayload}
+      scheduleItems={scheduleItems}
+      setScheduleItems={setScheduleItems}
+      isEditingSchedule={isEditingSchedule}
+      setIsEditingSchedule={setIsEditingSchedule}
+      setIsResult={setIsResult}
+      setIsAnalyzing={setIsResult}
+      prioritizerTasks={
+        hitlPayload?.type === "task_review" ? hitlPayload.tasks : undefined
+      }
+      onApprove={handleConfirmPriorities}
     />
   );
 }

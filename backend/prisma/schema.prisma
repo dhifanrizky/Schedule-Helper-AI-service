@@ -58,9 +58,8 @@ model Message {
   @@map("messages")
 }
 
-// INI YANG PALING PENTING: Menyimpan hasil ekstraksi Router & Prioritizer
 model Task {
-  id     String @id @default(uuid()) // Samakan dengan task_id dari LangGraph (misal task_001)
+  id     String @id @default(uuid()) 
   userId String
 
   // Dari RawTask (Router)
@@ -72,12 +71,13 @@ model Task {
 
   // Dari TaskBreakdown & ScheduleItem (Prioritizer & Scheduler)
   estimatedMinutes Int?
-  priority         Int? // 1, 2, 3...
+  priority         Int? // 1, 2, 3
   deadline         DateTime?
   startTime        DateTime? // Kapan jadwal ini akan dieksekusi
   status           String    @default("pending") // pending, scheduled, completed
   googleEventId    String?   @unique
   googleTaskId     String?   @unique
+  subtasks         String[] 
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
