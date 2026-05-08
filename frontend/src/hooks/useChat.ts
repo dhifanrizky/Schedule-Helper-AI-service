@@ -10,6 +10,10 @@ const EXECUTION_COMPLETE_PATTERN = /\x00EXECUTION_COMPLETE:([\s\S]+?)\x00/;
 const CONTROL_TOKEN_PATTERN =
   /\x00(?:THREAD_ID|EXECUTION_COMPLETE):[\s\S]*?\x00/g;
 
+// Fallback pattern jika backend membocorkan JSON ini langsung ke dalam text stream biasa
+// (tanpa event khusus dari route.ts / tanpa prefix \x00)
+const LEAKED_EXEC_PATTERN = /EXECUTION_COMPLETE:(\{[\s\S]*?\})/g;
+
 export type HitlPayload =
   | { type: "counselor_chat"; draft: string; message: string }
   | {
@@ -56,39 +60,6 @@ export function useChat(userEmail?: string) {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [isStarted, setIsStarted] = useState(false);
-  // const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>({
-  //   type: "task_review",
-  //   message:
-  //     "Cek dulu daftar tugas dan draft jadwal ini. Kamu bisa approve, edit, tambah, atau hapus sebelum dijadwalkan.",
-  //   tasks: [
-  //     {
-  //       task_id: "ac45577c-dad4-4215-b6ea-5657a704469f",
-  //       title: "Klarifikasi banyak tugas yang belum terdefinisi",
-  //       subtasks: [
-  //         "Buat daftar singkat semua tugas yang sedang mengganggu pikiran (nama, deskripsi singkat).",
-  //         "Tanyakan atau catat deadline masing-masing tugas (hari ini, besok, minggu ini, atau tanggal spesifik).",
-  //         "Identifikasi prioritas tiap tugas (tinggi, sedang, rendah).",
-  //         "Catat sumber atau orang yang memberi tugas untuk referensi lebih lanjut.",
-  //         "Susun tabel ringkas di aplikasi catatan/Google Sheet untuk visualisasi.",
-  //       ],
-  //       estimated_minutes: 30,
-  //       deadline: null,
-  //       priority: 2,
-  //       category: "biasa",
-  //       preferred_window: "bebas",
-  //     },
-  //   ],
-  //   proposed_schedule: [
-  //     {
-  //       task_id: "ac45577c-dad4-4215-b6ea-5657a704469f",
-  //       task: "Buat daftar singkat semua tugas yang sedang mengganggu pikiran (nama, deskripsi singkat).",
-  //       priority: 2,
-  //       start_time: "2026-05-05T09:00:00",
-  //       duration_minutes: 30,
-  //       category: "biasa",
-  //     },
-  //   ],
-  // });
   const [hitlPayload, setHitlPayload] = useState<HitlPayload | null>(null);
 
   useEffect(() => {
@@ -158,6 +129,7 @@ export function useChat(userEmail?: string) {
       let combined = controlBuffer + chunk;
       controlBuffer = "";
 
+      // 1. Parsing token yang valid dengan karakter \x00
       combined = combined.replace(CONTROL_TOKEN_PATTERN, (token) => {
         let replacementText = ""; // Default: hapus token dari stream
 
@@ -175,23 +147,34 @@ export function useChat(userEmail?: string) {
             const execData = JSON.parse(execMatch[1]) as ExecutionComplete;
             if (execData.status === "waiting_hitl" && execData.hitl_payload) {
               setHitlPayload(execData.hitl_payload);
-              console.log(execData);
-              console.log(hitlPayload)
-              // Jika ada pesan untuk user, jadikan pesan ini sebagai teks pengganti
               if (execData.hitl_payload.message) {
                 replacementText = execData.hitl_payload.message;
               }
             } else {
               setHitlPayload(null);
             }
-          } catch {
-            /* ignore parse error */
+          } catch (e) {
+            console.error("Gagal memparsing JSON Execution Complete (Valid Token):", e);
           }
         }
 
-        // Kembalikan replacementText.
-        // Jika ada message, teks ini akan masuk ke 'combined'. Jika tidak, akan jadi string kosong ("")
         return replacementText;
+      });
+
+      // 2. Fallback: Parsing teks EXECUTION_COMPLETE yang bocor dari backend (tanpa \x00)
+      combined = combined.replace(LEAKED_EXEC_PATTERN, (match, jsonString) => {
+        try {
+          const execData = JSON.parse(jsonString) as ExecutionComplete;
+          if (execData.status === "waiting_hitl" && execData.hitl_payload) {
+            setHitlPayload(execData.hitl_payload);
+            return execData.hitl_payload.message || "";
+          } else {
+            setHitlPayload(null);
+          }
+        } catch (e) {
+          console.error("Gagal memparsing JSON Execution Complete (Leaked):", e);
+        }
+        return "";
       });
 
       const trailingControlStart = combined.lastIndexOf("\x00");
@@ -206,12 +189,9 @@ export function useChat(userEmail?: string) {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
 
-        // Pastikan message terakhir memiliki role "system"
         if (updated[lastIdx]?.role === "system") {
           updated[lastIdx] = { role: "system", content: accumulated };
         } else if (accumulated.trim() !== "") {
-          // (Opsional) Jika system message belum ada di array, buat object baru
-          // Ini berguna kalau state 'messages' sebelumnya tidak diakhiri oleh "system"
           updated.push({ role: "system", content: accumulated });
         }
 
@@ -227,7 +207,6 @@ export function useChat(userEmail?: string) {
 
   const handleSend = async (
     e: FormEvent | null,
-    // Jika resume, pass approved_data — handleSend otomatis tahu ini resume
     resumeData?: ResumeData,
     questionnaireData?: QuestionnairePayload,
   ) => {
@@ -236,7 +215,6 @@ export function useChat(userEmail?: string) {
     const threadId = searchParams.get("thread_id");
     const isResume = resumeData !== undefined;
 
-    // Resume: tidak perlu input teks, tapi wajib thread_id
     if (isResume) {
       if (!threadId) {
         console.error("Resume dipanggil tapi thread_id tidak ada");
@@ -281,6 +259,9 @@ export function useChat(userEmail?: string) {
     // Chat biasa
     const trimmed = inputValue.trim();
     if (!trimmed || isTyping) return;
+
+    // Bersihkan hitlPayload lama supaya UI transisi dengan baik saat mengirim pesan baru
+    setHitlPayload(null);
 
     const userContent = buildUserContent(trimmed, questionnaireData);
     const userMessage: Message = { role: "user", content: userContent };
