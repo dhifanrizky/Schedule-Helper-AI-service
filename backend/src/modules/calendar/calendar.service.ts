@@ -37,13 +37,35 @@ export class CalendarService {
       refresh_token: user.googleRefreshToken,
     });
 
-    return google.calendar({ version: 'v3', auth: oauth2Client });
+    return oauth2Client;
+  }
+
+  private async getGoogleCalendar(userId: string) {
+    const auth = await this.getGoogleAuth(userId);
+    if (!auth) return null;
+    return google.calendar({ version: 'v3', auth });
+  }
+
+  private async getGoogleTasks(userId: string) {
+    const auth = await this.getGoogleAuth(userId);
+    if (!auth) return null;
+    return google.tasks({ version: 'v1', auth });
+  }
+
+  /**
+   * Mapping priority ke colorId Google Calendar:
+   * 11 = Tomato (merah)  → priority 1 (urgent)
+   * 5  = Banana (kuning) → priority 2 (sedang)
+   * 2  = Sage (hijau)    → priority 3+ (rendah)
+   */
+  private getPriorityColor(priority?: number | null): string {
+    if (priority === 1) return '11'; // Tomato - merah
+    if (priority === 2) return '5';  // Banana - kuning
+    return '2';                       // Sage - hijau
   }
 
   async findAll(userId: string) {
-    // Untuk fitur sinkronisasi tarik (pull), kita tampilkan dari DB lokal
-    // Namun kita bisa log data dari google untuk verifikasi later
-    const calendar = await this.getGoogleAuth(userId);
+    const calendar = await this.getGoogleCalendar(userId);
     if (calendar) {
       try {
         const res = await calendar.events.list({
@@ -81,9 +103,12 @@ export class CalendarService {
   }
 
   async create(userId: string, dto: CreateCalendarDto) {
-    const calendar = await this.getGoogleAuth(userId);
+    const calendar = await this.getGoogleCalendar(userId);
+    const tasksClient = await this.getGoogleTasks(userId);
     let googleEventId: string | null = null;
+    let googleTaskId: string | null = null;
 
+    // ── 1. Sync ke Google Calendar ──
     if (calendar) {
       try {
         const startDateTime = dto.startTime ?? new Date().toISOString();
@@ -105,13 +130,51 @@ export class CalendarService {
 
         const res = await calendar.events.insert({
           calendarId: 'primary',
-          requestBody: event,
+          requestBody: {
+            ...event,
+            colorId: this.getPriorityColor(dto.priority),
+          },
         });
         googleEventId = res.data.id ?? null;
-        console.log('[Google Sync] Event berhasil dibuat:', googleEventId);
+        console.log('[Google Calendar] Event berhasil dibuat:', googleEventId);
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        console.error('[Google Sync] Gagal membuat event:', message);
+        console.error('[Google Calendar] Gagal membuat event:', message);
+      }
+    }
+
+    // ── 2. Sync ke Google Tasks (beserta subtasks) ──
+    if (tasksClient) {
+      try {
+        const taskRes = await tasksClient.tasks.insert({
+          tasklist: '@default',
+          requestBody: {
+            title: dto.title,
+            notes: dto.description || '',
+            due: dto.deadline
+              ? new Date(dto.deadline).toISOString()
+              : undefined,
+          },
+        });
+        googleTaskId = taskRes.data.id ?? null;
+        console.log('[Google Tasks] Task berhasil dibuat:', googleTaskId);
+
+        // Buat subtasks sebagai child task
+        if (dto.subtasks && dto.subtasks.length > 0 && googleTaskId) {
+          for (const subtask of dto.subtasks) {
+            await tasksClient.tasks.insert({
+              tasklist: '@default',
+              parent: googleTaskId,
+              requestBody: { title: subtask },
+            });
+          }
+          console.log(
+            `[Google Tasks] ${dto.subtasks.length} subtask berhasil dibuat.`,
+          );
+        }
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.error('[Google Tasks] Gagal membuat task:', message);
       }
     }
 
@@ -127,13 +190,14 @@ export class CalendarService {
         startTime: dto.startTime ? new Date(dto.startTime) : null,
         status: dto.status || 'pending',
         googleEventId,
+        googleTaskId,
       },
     });
   }
 
   async update(id: string, userId: string, dto: UpdateCalendarDto) {
     const task = await this.findOne(id, userId);
-    const calendar = await this.getGoogleAuth(userId);
+    const calendar = await this.getGoogleCalendar(userId);
 
     if (calendar && task.googleEventId) {
       try {
@@ -153,7 +217,7 @@ export class CalendarService {
         });
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        console.error('[Google Sync] Gagal update event:', message);
+        console.error('[Google Calendar] Gagal update event:', message);
       }
     }
 
@@ -174,7 +238,8 @@ export class CalendarService {
 
   async remove(id: string, userId: string) {
     const task = await this.findOne(id, userId);
-    const calendar = await this.getGoogleAuth(userId);
+    const calendar = await this.getGoogleCalendar(userId);
+    const tasksClient = await this.getGoogleTasks(userId);
 
     if (calendar && task.googleEventId) {
       try {
@@ -182,9 +247,23 @@ export class CalendarService {
           calendarId: 'primary',
           eventId: task.googleEventId,
         });
+        console.log('[Google Calendar] Event berhasil dihapus.');
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        console.error('[Google Sync] Gagal hapus event:', message);
+        console.error('[Google Calendar] Gagal hapus event:', message);
+      }
+    }
+
+    if (tasksClient && task.googleTaskId) {
+      try {
+        await tasksClient.tasks.delete({
+          tasklist: '@default',
+          task: task.googleTaskId,
+        });
+        console.log('[Google Tasks] Task berhasil dihapus:', task.googleTaskId);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        console.error('[Google Tasks] Gagal hapus task:', message);
       }
     }
 

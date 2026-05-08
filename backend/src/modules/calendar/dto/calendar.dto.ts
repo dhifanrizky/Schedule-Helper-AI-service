@@ -6,6 +6,7 @@ import {
   IsInt,
   Min,
   IsDateString,
+  IsArray,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -53,6 +54,12 @@ export class CreateCalendarDto {
   @IsString()
   @IsOptional()
   status?: string;
+
+  @ApiPropertyOptional({ example: ['Siapkan materi', 'Hadir meeting'] })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  subtasks?: string[];
 }
 
 export class UpdateCalendarDto {

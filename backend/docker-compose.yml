@@ -7,6 +7,8 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123
       POSTGRES_DB: nest
+    volumes:
+      - dev-db-data:/var/lib/postgresql/data
     networks:
       - schedule-helper
 
@@ -15,7 +17,7 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "3000:3000"
+      - "3001:3000"
     environment:
       - DATABASE_URL=postgresql://postgres:123@dev-db:5432/nest?schema=public
       - JWT_SECRET=supersecretkey
@@ -31,6 +33,7 @@ services:
       - dev-db
     networks:
       - schedule-helper
+
   test-db:
     image: postgres:18
     ports:
@@ -39,7 +42,14 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123
       POSTGRES_DB: nest
+    volumes:
+      - test-db-data:/var/lib/postgresql/data
     networks:
       - schedule-helper
+
+volumes:
+  dev-db-data:
+  test-db-data:
+
 networks:
   schedule-helper:
