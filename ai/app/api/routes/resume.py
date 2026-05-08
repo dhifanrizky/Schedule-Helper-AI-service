@@ -1,7 +1,7 @@
 import json
 import traceback
 from collections.abc import AsyncIterator
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from app.api.schemas import HITLResumeRequest, ResumeResponse
 from app.dependencies import get_graph
@@ -64,14 +64,26 @@ def _normalize_update_payload(update: dict) -> dict:
     return update
 
 
+def _inject_authorization(approved_data: dict, authorization: str | None) -> dict:
+    if not authorization:
+        return approved_data
+    for key in ("authorization", "auth_token", "access_token"):
+        if approved_data.get(key):
+            return approved_data
+    return {**approved_data, "authorization": authorization}
+
+
 async def _stream_resume_events(
-    graph, config: dict, thread_id: str, body: HITLResumeRequest
+    graph,
+    config: dict,
+    thread_id: str,
+    approved_data: dict,
 ) -> AsyncIterator[str]:
     """Stream resume events as SSE."""
     print(f"[resume-stream][start][thread_id={thread_id}]")
     try:
         async for stream_item in graph.astream(
-            Command(resume=body.approved_data),
+            Command(resume=approved_data),
             config=config,
             stream_mode=["messages", "updates"],
         ):
@@ -150,7 +162,12 @@ async def _stream_resume_events(
 
 
 @router.post("/{thread_id}", response_model=ResumeResponse)
-async def resume(thread_id: str, body: HITLResumeRequest, graph=Depends(get_graph)):
+async def resume(
+    thread_id: str,
+    body: HITLResumeRequest,
+    graph=Depends(get_graph),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
     """
     Dipanggil NestJS setelah user approve/edit data di frontend.
 
@@ -169,10 +186,12 @@ async def resume(thread_id: str, body: HITLResumeRequest, graph=Depends(get_grap
     if not state.next:
         raise HTTPException(status_code=400, detail="Thread ini tidak sedang menunggu HITL")
 
+    approved_data = _inject_authorization(body.approved_data, authorization)
+
     try:
         # inject approved_data sebagai Command untuk resume interrupt
         async for step_update in graph.astream(
-            Command(resume=body.approved_data),
+            Command(resume=approved_data),
             config=config,
             stream_mode="updates",
         ):
@@ -199,7 +218,12 @@ async def resume(thread_id: str, body: HITLResumeRequest, graph=Depends(get_grap
 
 
 @router.post("/{thread_id}/stream")
-async def resume_stream(thread_id: str, body: HITLResumeRequest, graph=Depends(get_graph)):
+async def resume_stream(
+    thread_id: str,
+    body: HITLResumeRequest,
+    graph=Depends(get_graph),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
     """
     Stream resume events as Server-Sent Events (SSE).
     Same as POST /{thread_id} but with real-time streaming updates.
@@ -213,8 +237,10 @@ async def resume_stream(thread_id: str, body: HITLResumeRequest, graph=Depends(g
     if not state.next:
         raise HTTPException(status_code=400, detail="Thread ini tidak sedang menunggu HITL")
 
+    approved_data = _inject_authorization(body.approved_data, authorization)
+
     return StreamingResponse(
-        _stream_resume_events(graph, config, thread_id, body),
+        _stream_resume_events(graph, config, thread_id, approved_data),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

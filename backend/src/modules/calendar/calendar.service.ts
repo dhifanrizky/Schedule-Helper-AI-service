@@ -86,19 +86,19 @@ export class CalendarService {
 
     if (calendar) {
       try {
+        const startDateTime = dto.startTime ?? new Date().toISOString();
+        const endDateTime =
+          dto.deadline ?? new Date(Date.now() + 3600000).toISOString();
+
         const event = {
           summary: dto.title,
           description: dto.description,
           start: {
-            dateTime: dto.startTime
-              ? new Date(dto.startTime).toISOString()
-              : new Date().toISOString(),
+            dateTime: startDateTime,
             timeZone: 'Asia/Jakarta',
           },
           end: {
-            dateTime: dto.deadline
-              ? new Date(dto.deadline).toISOString()
-              : new Date(Date.now() + 3600000).toISOString(),
+            dateTime: endDateTime,
             timeZone: 'Asia/Jakarta',
           },
         };

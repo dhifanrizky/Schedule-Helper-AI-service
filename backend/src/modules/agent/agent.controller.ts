@@ -38,6 +38,7 @@ export class AgentController {
     @GetUser('id') userId: string,
   ) {
     try {
+      const authHeader = req.headers.authorization;
       const cleanPayload: ChatDto = {
         message: body.message,
         ...(body.thread_id?.trim() ? { thread_id: body.thread_id.trim() } : {}),
@@ -56,6 +57,7 @@ export class AgentController {
         url: isResume
           ? `${process.env.AI_API ?? 'http://localhost:8000'}/resume/${cleanPayload.thread_id}/stream`
           : `${process.env.AI_API ?? 'http://localhost:8000'}/chat/stream`,
+        headers: authHeader ? { Authorization: authHeader } : undefined,
         data: isResume
           ? {
               user_id: userId,
