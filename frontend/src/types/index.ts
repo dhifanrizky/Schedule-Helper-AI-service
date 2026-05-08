@@ -45,3 +45,14 @@ export type QuestionnairePayload = {
   mood: number; // 0 - 100 (0 = Happy, 100 = Stres)
   availableTime: string; // Contoh: "2 - 4 Hours"
 };
+
+export interface CreateCalendarPayload {
+  title: string;
+  description: string;
+  category: string;
+  priority?: number;
+  deadline?: string;
+  estimatedMinutes?: number;
+  startTime?: string;
+  status?: string;
+}

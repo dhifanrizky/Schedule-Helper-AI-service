@@ -8,6 +8,7 @@ import { StartState } from "@/components/dashboard/StartState";
 import { AnalyzingState } from "@/components/dashboard/AnalyzingState";
 import { ResultState } from "@/components/dashboard/ResultState";
 import { ChatState } from "@/components/dashboard/ChatState";
+import { CreateCalendarPayload } from "@/types";
 
 const formatTimeRange = (startTime: string, durationMinutes: number) => {
   let hours: number | null = null;
@@ -91,16 +92,41 @@ export default function DashboardClient() {
     setScheduleItems(mappedScheduleItems);
   }, [hitlPayload, setScheduleItems]);
 
-  const handleConfirmPriorities = () => {
+  const handleConfirmPriorities = async () => {
     if (hitlPayload?.type !== "task_review") return;
 
-    handleSend(null, {
-      tasks: hitlPayload.tasks.map((task) => ({
-        task: task.title,
-        priority: task.priority,
-        deadline: task.deadline ?? "",
-      })),
-    });
+    try {
+      await Promise.all(
+        hitlPayload.tasks.map((task) =>
+          fetch("/api/calendar", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              title: task.title,
+              description: task.title,
+              category: task.category ?? "general",
+              priority: task.priority,
+              deadline: task.deadline ?? undefined,
+            } satisfies CreateCalendarPayload),
+          }).then((res) => {
+            if (!res.ok) throw new Error(`Failed to save task: ${task.title}`);
+            return res.json();
+          }),
+        ),
+      );
+
+      handleSend(null, {
+        tasks: hitlPayload.tasks.map((task) => ({
+          task: task.title,
+          priority: task.priority,
+          deadline: task.deadline ?? "",
+        })),
+      });
+    } catch (error) {
+      console.error("Error saving tasks to calendar:", error);
+    }
   };
 
   if (hitlPayload?.type === "task_review") {
