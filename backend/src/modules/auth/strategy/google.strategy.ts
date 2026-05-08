@@ -21,7 +21,12 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
         callbackURL:
           config.get<string>('GOOGLE_CALLBACK_URL') ||
           'http://localhost:3000/api/auth/google/callback',
-        scope: ['email', 'profile', 'https://www.googleapis.com/auth/calendar'],
+        scope: [
+          'email',
+          'profile',
+          'https://www.googleapis.com/auth/calendar',
+          'https://www.googleapis.com/auth/tasks',
+        ],
         // Mendapatkan refresh token agar backend bisa sync saat user offline
         accessType: 'offline',
         prompt: 'consent',
