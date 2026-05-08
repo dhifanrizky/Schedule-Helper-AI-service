@@ -10,6 +10,8 @@ import { ResultState } from "@/components/dashboard/ResultState";
 import { ChatState } from "@/components/dashboard/ChatState";
 import { CreateCalendarPayload } from "@/types";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3000/api";
+
 const formatTimeRange = (startTime: string, durationMinutes: number) => {
   let hours: number | null = null;
   let minutes: number | null = null;
@@ -98,7 +100,7 @@ export default function DashboardClient() {
     try {
       await Promise.all(
         hitlPayload.tasks.map((task) =>
-          fetch("/api/calendar", {
+          fetch(`${API_URL}/calendar`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
