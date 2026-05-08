@@ -3,9 +3,11 @@ import {
   IsString,
   IsNotEmpty,
   IsOptional,
-  IsNumber,
+  IsInt,
+  Min,
   IsDateString,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateCalendarDto {
   @ApiProperty({ example: 'Meeting with Team' })
@@ -24,22 +26,26 @@ export class CreateCalendarDto {
   category!: string;
 
   @ApiPropertyOptional({ example: 60 })
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
   estimatedMinutes?: number;
 
   @ApiPropertyOptional({ example: 1 })
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
   priority?: number;
 
   @ApiPropertyOptional({ example: '2026-05-10T10:00:00Z' })
-  @IsDateString()
+  @IsDateString({ strict: false })
   @IsOptional()
   deadline?: string;
 
   @ApiPropertyOptional({ example: '2026-05-06T09:00:00Z' })
-  @IsDateString()
+  @IsDateString({ strict: false })
   @IsOptional()
   startTime?: string;
 
@@ -66,22 +72,26 @@ export class UpdateCalendarDto {
   category?: string;
 
   @ApiPropertyOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
   estimatedMinutes?: number;
 
   @ApiPropertyOptional()
-  @IsNumber()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
   @IsOptional()
   priority?: number;
 
   @ApiPropertyOptional()
-  @IsDateString()
+  @IsDateString({ strict: false })
   @IsOptional()
   deadline?: string;
 
   @ApiPropertyOptional()
-  @IsDateString()
+  @IsDateString({ strict: false })
   @IsOptional()
   startTime?: string;
 

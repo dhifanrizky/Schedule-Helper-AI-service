@@ -12,12 +12,48 @@ export const mockUserProfile: UserProfile = {
 
 // Item jadwal harian default untuk Result Page
 export const defaultScheduleItems: ScheduleItem[] = [
-  { time: "9:00 - 9:25", title: "Quick Wins Session" },
-  { time: "9:30 - 10:15", title: "Review client feedback" },
-  { time: "10:15 - 10:30", title: "Break" },
-  { time: "10:30 - 12:30", title: "Complete project proposal" },
-  { time: "12:30 - 1:30", title: "Lunch Break" },
-  { time: "1:30 - 2:30", title: "Team meeting preparation" },
+  { 
+    task_id: "T-001", 
+    title: "Quick Wins Session", 
+    priority: 1, 
+    time: "9:00 - 9:25", 
+    category: "Work" 
+  },
+  { 
+    task_id: "T-002", 
+    title: "Review client feedback", 
+    priority: 2, 
+    time: "9:30 - 10:15", 
+    category: "Review" 
+  },
+  { 
+    task_id: "T-003", 
+    title: "Break", 
+    priority: 3, 
+    time: "10:15 - 10:30", 
+    category: "Break" 
+  },
+  { 
+    task_id: "T-004", 
+    title: "Complete project proposal", 
+    priority: 1, 
+    time: "10:30 - 12:30", 
+    category: "Project" 
+  },
+  { 
+    task_id: "T-005", 
+    title: "Lunch Break", 
+    priority: 3, 
+    time: "12:30 - 1:30", 
+    category: "Break" 
+  },
+  { 
+    task_id: "T-006", 
+    title: "Team meeting preparation", 
+    priority: 2, 
+    time: "1:30 - 2:30", 
+    category: "Meeting" 
+  },
 ];
 
 // Data riwayat jadwal default untuk History Page

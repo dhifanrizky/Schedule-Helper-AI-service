@@ -2,7 +2,7 @@
 import traceback
 import uuid
 from collections.abc import AsyncIterator
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 from app.api.schemas import ChatRequest, ChatResponse
@@ -20,7 +20,10 @@ async def _print_step_state(graph, config: dict, thread_id: str, step_update: di
     )
 
 
-def _chat_input(body: ChatRequest, thread_id: str) -> dict:
+def _chat_input(body: ChatRequest, thread_id: str, authorization: str | None = None) -> dict:
+    metadata = {"user_id": body.user_id}
+    if authorization:
+        metadata["authorization"] = authorization
     return {
         "messages": [HumanMessage(content=body.message)],
         "user_input": body.message,
@@ -34,7 +37,7 @@ def _chat_input(body: ChatRequest, thread_id: str) -> dict:
         "api_payload": None,
         "final_message": None,
         "error_message": None,
-        "metadata": {"user_id": body.user_id},
+        "metadata": metadata,
         "hitl_status": None,
         "hitl_input": None,
     }
@@ -85,10 +88,16 @@ def _normalize_update_payload(update: dict) -> dict:
     return update
 
 
-async def _stream_chat_events(graph, config: dict, thread_id: str, body: ChatRequest) -> AsyncIterator[str]:
+async def _stream_chat_events(
+    graph,
+    config: dict,
+    thread_id: str,
+    body: ChatRequest,
+    authorization: str | None,
+) -> AsyncIterator[str]:
     try:
         async for stream_item in graph.astream(
-            _chat_input(body, thread_id),
+            _chat_input(body, thread_id, authorization),
             config=config,
             stream_mode=["messages", "updates"],
         ):
@@ -159,7 +168,11 @@ async def _stream_chat_events(graph, config: dict, thread_id: str, body: ChatReq
 
 
 @router.post("", response_model=ChatResponse)
-async def chat(body: ChatRequest, graph=Depends(get_graph)):
+async def chat(
+    body: ChatRequest,
+    graph=Depends(get_graph),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
     """
     Entry point percakapan baru atau lanjutan.
 
@@ -175,23 +188,7 @@ async def chat(body: ChatRequest, graph=Depends(get_graph)):
 
     try:
         async for step_update in graph.astream(
-            {
-                "messages": [HumanMessage(content=body.message)],
-                "user_input": body.message,
-                "current_intent": None,
-                "raw_tasks": [],
-                "counselor_response": [],
-                "counselor_done": False,
-                "task_breakdown": [],
-                "proposed_schedule": [],
-                "api_status": None,
-                "api_payload": None,
-                "final_message": None,
-                "error_message": None,
-                "metadata": {"user_id": body.user_id},
-                "hitl_status": None,
-                "hitl_input": None,
-            },
+            _chat_input(body, thread_id, authorization),
             config=config,
             stream_mode="updates",
         ):
@@ -220,12 +217,16 @@ async def chat(body: ChatRequest, graph=Depends(get_graph)):
 
 
 @router.post("/stream")
-async def chat_stream(body: ChatRequest, graph=Depends(get_graph)):
+async def chat_stream(
+    body: ChatRequest,
+    graph=Depends(get_graph),
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
     thread_id = body.thread_id or str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
 
     return StreamingResponse(
-        _stream_chat_events(graph, config, thread_id, body),
+        _stream_chat_events(graph, config, thread_id, body, authorization),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",

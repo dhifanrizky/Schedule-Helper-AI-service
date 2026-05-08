@@ -1,5 +1,6 @@
 from functools import lru_cache
 from typing import Any
+import logging
 
 import httpx
 
@@ -23,55 +24,110 @@ class BackendCalendarClient:
                 headers["Authorization"] = f"Bearer {auth_token}"
         return headers
 
-    def _handle_response(self, response: httpx.Response) -> Any:
+    def _handle_response(
+        self, response: httpx.Response, method: str, url: str
+    ) -> Any:
         if response.status_code >= 400:
+            detail = response.text
+            content_type = response.headers.get("Content-Type", "")
+            if "application/json" in content_type:
+                try:
+                    payload = response.json()
+                    if isinstance(payload, dict):
+                        # NestJS class-validator biasanya mereturn array of error strings di field "message"
+                        msg = payload.get("message")
+                        if isinstance(msg, list):
+                            detail = ", ".join(msg)
+                        else:
+                            detail = msg or payload.get("error") or detail
+                except ValueError:
+                    pass
+            detail = detail.strip() if isinstance(detail, str) else str(detail)
+            logging.getLogger(__name__).error(
+                "[calendar_client] %s %s status=%s headers=%s body=%s",
+                method,
+                url,
+                response.status_code,
+                dict(response.headers),
+                detail,
+            )
             raise ValueError(
-                f"Calendar API error {response.status_code}: {response.text}"
+                f"Calendar API error {response.status_code} {method} {url}: {detail}"
             )
         if not response.content:
             return None
-        return response.json()
+        try:
+            return response.json()
+        except ValueError:
+            return response.text
+
+    def _request_json(
+        self,
+        method: str,
+        path: str,
+        token: str | None = None,
+        payload: dict | None = None,
+    ) -> Any:
+        url = f"{self.base_url}{path}"
+        logging.getLogger(__name__).info(
+            "[calendar_client] request %s %s payload=%s",
+            method,
+            url,
+            payload,
+        )
+        try:
+            response = self._client.request(
+                method,
+                url,
+                headers=self._build_headers(token),
+                json=payload,
+            )
+        except httpx.TimeoutException as exc:
+            raise ValueError(
+                f"Calendar API timeout (10s) {method} {url}"
+            ) from exc
+        except httpx.RequestError as exc:
+            raise ValueError(
+                f"Calendar API connection error {method} {url}: {exc}"
+            ) from exc
+        return self._handle_response(response, method, url)
 
     def list_schedules(self, token: str | None = None) -> list[dict]:
-        response = self._client.get(
-            f"{self.base_url}/api/calendar",
-            headers=self._build_headers(token),
-        )
-        data = self._handle_response(response)
+        data = self._request_json("GET", "/api/calendar", token=token)
         return data if isinstance(data, list) else []
 
     def get_schedule(self, schedule_id: str, token: str | None = None) -> dict:
-        response = self._client.get(
-            f"{self.base_url}/api/calendar/{schedule_id}",
-            headers=self._build_headers(token),
+        data = self._request_json(
+            "GET",
+            f"/api/calendar/{schedule_id}",
+            token=token,
         )
-        data = self._handle_response(response)
         return data if isinstance(data, dict) else {}
 
     def create_schedule(self, dto: dict, token: str | None = None) -> dict:
-        response = self._client.post(
-            f"{self.base_url}/api/calendar",
-            headers=self._build_headers(token),
-            json=dto,
+        data = self._request_json(
+            "POST",
+            "/api/calendar",
+            token=token,
+            payload=dto,
         )
-        data = self._handle_response(response)
         return data if isinstance(data, dict) else {}
 
     def update_schedule(self, schedule_id: str, dto: dict, token: str | None = None) -> dict:
-        response = self._client.patch(
-            f"{self.base_url}/api/calendar/{schedule_id}",
-            headers=self._build_headers(token),
-            json=dto,
+        data = self._request_json(
+            "PATCH",
+            f"/api/calendar/{schedule_id}",
+            token=token,
+            payload=dto,
         )
-        data = self._handle_response(response)
         return data if isinstance(data, dict) else {}
 
     def delete_schedule(self, schedule_id: str, token: str | None = None) -> dict:
-        response = self._client.delete(
-            f"{self.base_url}/api/calendar/{schedule_id}",
-            headers=self._build_headers(token),
+        data = self._request_json(
+            "DELETE",
+            f"/api/calendar/{schedule_id}",
+            token=token,
         )
-        data = self._handle_response(response)
         return data if isinstance(data, dict) else {}
 
 
