@@ -1,370 +1,832 @@
 from __future__ import annotations
 
-from langgraph.types import interrupt as _langgraph_interrupt
-from pydantic import BaseModel, Field
+from uuid import uuid4
 from typing import Optional
+from pydantic import BaseModel, Field
+
+from langgraph.types import interrupt as _langgraph_interrupt
+
 from app.graph.state import AppState
 from app.graph.agents.helpers import last_message, ai_msg, get_hitl_input, get_raw_tasks, get_metadata
 from app.graph.types import CategoryType
 
-# ---------------------------------------------------------------------------
-# Agent 2: CounselorAgent — Sequential Per-Task Version
+# =============================================================================
+# Agent 2: CounselorAgent
+# =============================================================================
+#
+# ATURAN KERAS:
+#   - SATU interrupt per run. Tidak pernah lebih dari 1.
+#   - State internal disimpan di hitl_input.
+#   - Loop dikendalikan routing.py (counselor_done=False -> panggil lagi).
 #
 # ALUR:
-#   Loop 0 (pertama):
-#     - Validasi perasaan user HANYA jika ada ekspresi stres/pusing
-#     - Kalimat penenang singkat
-#     - Tanya task PERTAMA yang belum lengkap (output/hasil + deadline)
+#   /chat pertama
+#     -> router -> counselor(phase=init)
+#     -> kalau vague: interrupt discovery (tanya tugas apa aja)
+#     -> kalau spesifik: interrupt detail task[0]
 #
-#   Loop 1..N (selanjutnya):
-#     - Acknowledge jawaban user dengan hangat (tanpa validasi perasaan lagi)
-#     - Enrich task yang baru dijawab
-#     - Kalau masih ada task lain yang belum → tanya task berikutnya
-#     - Kalau semua sudah → tampilkan ringkasan + minta konfirmasi
+#   /resume (user jawab)
+#     -> counselor(phase=detail atau review)
+#     -> detail: parse jawaban, simpan, cari task berikutnya
+#       -> ada task lagi: interrupt tanya task berikutnya
+#       -> semua lengkap: interrupt review
+#     -> review: cek approved
+#       -> approved: counselor_done=True
+#       -> tidak: update desc, interrupt review baru
 #
-#   Loop konfirmasi (all_complete=True):
-#     - User approve → counselor_done=True → lanjut prioritizer
-#     - User ada tambahan/koreksi → enrich + done
+# HITL PAYLOAD:
+#   chat:   {"type":"counselor_chat",   "message":str, "phase":"chat"}
+#   review: {"type":"counselor_review", "message":str, "phase":"review", "task_summary":[...]}
 #
-# TASK is_complete = True jika:
-#   - Sudah tahu OUTPUT/HASIL AKHIRNYA apa (laporan, database, presentasi, dll)
-#   - Deadline sudah ada ATAU user konfirmasi belum ada
-#   Tidak perlu: format, jumlah halaman, peserta, detail teknis
+# RESUME PAYLOAD dari user:
+#   chat:   {"additional_context": "jawaban user"}           <- TANPA approved
+#   review: {"approved": bool, "additional_context": "..."}  <- ADA approved
 #
-# HITL payload:
-#   { "type": "counselor_chat", "message": "...", "is_confirmation": bool,
-#     "current_task_index": int, "asked_questions": [...] }
-#
-# HITL resume:
-#   { "approved": true/false, "additional_context": "teks balasan user" }
-# ---------------------------------------------------------------------------
+# =============================================================================
 
-MAX_COUNSELOR_LOOPS = 5
-DEBUG = True
+MAX_LOOPS  = 12
+MAX_REVIEW = 3
+DEBUG      = True
 
 
-def _debug(label: str, data):
+def _log(label: str, data=None):
     if DEBUG:
-        print(f"\n[COUNSELOR DEBUG] {label}")
-        print(data)
+        print(f"\n[COUNSELOR] {label}")
+        if data is not None:
+            print(data)
 
 
-# ── Schema ────────────────────────────────────────────────────────────────────
+# ── Pydantic Schemas ──────────────────────────────────────────────────────────
 
-class TaskEnrichment(BaseModel):
+class DiscoveredTask(BaseModel):
+    title: str = Field(description=(
+        "Nama task singkat dan jelas. "
+        "Contoh: 'Tugas Basis Data', 'Laporan Praktikum Kimia'. "
+        "Satu task per item."
+    ))
+    raw_time: str | None = Field(default=None, description=(
+        "Frasa deadline jika user sebutkan. Null jika tidak ada."
+    ))
+    raw_input: str = Field(description="Kalimat asli user untuk task ini.")
+    category: CategoryType = Field(default="biasa", description=(
+        "'serius' untuk tugas berat, 'santai' ringan, 'biasa' umum."
+    ))
+
+
+class DiscoveryOutput(BaseModel):
+    tasks: list[DiscoveredTask] = Field(description=(
+        "Daftar task dari user. Satu item per task berbeda. "
+        "'basdat sama RPL' = 2 item terpisah."
+    ))
+
+
+class TaskDetailParsed(BaseModel):
+    parsed_description: str | None = Field(default=None, description=(
+        "Deskripsi dari jawaban user: output tugas, perasaan user, catatan khusus. "
+        "Tulis ulang dengan jelas. Null hanya jika user tidak menyebut apapun."
+    ))
+    parsed_raw_time: str | None = Field(default=None, description=(
+        "Frasa deadline dari user persis: 'besok', 'minggu depan'. "
+        "Null jika tidak disebutkan."
+    ))
+    deadline_confirmed_none: bool = Field(default=False, description=(
+        "True HANYA jika user eksplisit bilang: 'ga ada deadline', "
+        "'belum tau', 'masih lama', 'ga ada'. "
+        "False jika user tidak menyebut soal deadline sama sekali."
+    ))
+
+
+class ReviewEnrichItem(BaseModel):
     task_id: str
-    updated_title: Optional[str] = Field(
-        default=None,
-        description=(
-            "Perjelas title jika user memberi info spesifik. "
-            "Contoh: 'Tugas Basdat' → 'Bikin Database ERD'. Null jika sudah oke."
-        )
-    )
-    updated_description: Optional[str] = Field(
-        default=None,
-        description=(
-            "Isi dengan GABUNGAN deskripsi lama + info baru. Jangan buang info yang sudah ada."
-            "Tulis: (1) output/hasil akhir yang diketahui, (2) deadline jika ada, "
-            "(3) hal yang masih belum jelas. "
-            "Null HANYA jika user tidak menyebut info baru sama sekali."
-        )
-    )
-    updated_raw_time: Optional[str] = Field(
-        default=None,
-        description=(
-            "Update HANYA jika user menyebut waktu/deadline baru. "
-            "Tulis frasa persis user (misal: 'besok', 'minggu depan'). "
-            "Null jika tidak ada info waktu baru."
-        )
-    )
-    updated_category: Optional[CategoryType] = Field(
-        default=None,
-        description="Update jika konteks berubah. Null jika tidak ada perubahan."
-    )
-    is_complete: bool = Field(
-        description=(
-            "True jika task sudah punya: "
-            "(1) output/hasil akhir yang jelas (laporan, database, presentasi, dll) "
-            "DAN (2) deadline sudah ada ATAU user sudah bilang belum ada/tidak tahu. "
-            "True juga jika user jawab singkat atau bilang 'ga tau', 'udah itu aja' — jangan paksa. "
-            "False HANYA jika output task benar-benar tidak bisa diinfer sama sekali."
-        )
-    )
+    updated_description: str | None = Field(default=None, description=(
+        "Gabungan deskripsi lama + info baru. Jangan hapus info lama. "
+        "Null jika tidak ada info baru untuk task ini."
+    ))
+    updated_raw_time: str | None = Field(default=None, description=(
+        "Update deadline jika user sebut info raw time / deadline baru. Null jika tidak ada perubahan."
+    ))
 
 
-class CounselorOutput(BaseModel):
-    enrichments: list[TaskEnrichment]
-    all_complete: bool = Field(
-        description="True jika SEMUA task is_complete=True."
-    )
-    reply: str = Field(
-        description=(
-            "Teks bubble chat ke user. Bahasa SAMA PERSIS dengan user.\n\n"
-            "LOOP PERTAMA (is_first_loop=True di prompt):\n"
-            "  1. Kalau user express stres/pusing: validasi perasaan 1 kalimat yang genuine\n"
-            "     Contoh BAGUS: 'Tenang, kita bedah satu-satu biar kamu ga overwhelmed'\n"
-            "     Contoh JELEK: 'Iya aku tau kamu pusing banget'\n"
-            "  2. Kalau user tidak express stres: langsung ke poin 3\n"
-            "  3. Kalimat penenang singkat + ajakan bantu\n"
-            "     Contoh: 'Aku bantu atur ya, kita mulai dari [task pertama] dulu'\n"
-            "  4. Tanya task PERTAMA: output/hasil + deadline dalam 1-2 kalimat natural\n"
-            "     Contoh: 'Tugas basdat-nya ngerjain apa? (misal: bikin ERD, query SQL, laporan?) "
-            "Terus deadline-nya kapan?'\n\n"
-            "LOOP SELANJUTNYA (bukan first loop, belum all_complete):\n"
-            "  1. Acknowledge jawaban user, 1 kalimat hangat — TANPA validasi perasaan lagi\n"
-            "     Contoh: 'Oke, noted buat [task]!'\n"
-            "  2. Langsung tanya task BERIKUTNYA yang belum lengkap\n"
-            "     Format sama: output/hasil + deadline dalam 1 kalimat\n\n"
-            "LOOP KONFIRMASI (all_complete=True):\n"
-            "  1. Acknowledge jawaban terakhir, 1 kalimat\n"
-            "  2. Tampilkan ringkasan semua task (title + output + deadline)\n"
-            "  3. Tutup dengan: 'Udah bener semua? Atau ada yang mau diubah/ditambahin?'\n\n"
-            "LARANGAN:\n"
-            "  - JANGAN tulis 'Kesimpulan ini udah pas?' di loop non-konfirmasi\n"
-            "  - JANGAN validasi perasaan lebih dari sekali\n"
-            "  - JANGAN tanya lebih dari 1 task per loop\n"
-            "  - JANGAN tanya: durasi, prioritas, peserta, format teknis\n"
-            "  - Maks 5 kalimat total"
-        )
-    )
-    next_incomplete_task_id: Optional[str] = Field(
-        default=None,
-        description=(
-            "task_id dari task BERIKUTNYA yang belum is_complete=True. "
-            "Null jika semua sudah lengkap."
-        )
-    )
-    task_summary: str = Field(
-        description=(
-            "Ringkasan untuk ditampilkan saat konfirmasi akhir. "
-            "Format: '• [Title]: [output/hasil], deadline: [waktu atau belum ada]' per baris."
-        )
-    )
-    bridge: str = Field(
-        description=(
-            "1-2 kalimat ajakan ke penjadwalan. Ditampilkan HANYA saat approved. "
-            "Sebutkan semua task. Energik tapi tidak lebay."
-        )
-    )
+class ReviewEnrichOutput(BaseModel):
+    updates: list[ReviewEnrichItem]
 
 
-# ── System Prompt ─────────────────────────────────────────────────────────────
+# ── System Prompts ────────────────────────────────────────────────────────────
 
-SYSTEM_PROMPT = """Kamu adalah teman yang hangat dan helpful yang bantu user melengkapi info tugasnya.
+DISCOVERY_SYSTEM = """Ekstrak setiap task yang disebutkan user menjadi item terpisah.
 
-FILOSOFI:
-Kamu tahu user lagi overwhelmed. Tugasmu bukan interogasi — tapi bantu user merasa didengar
-dan pelan-pelan keluarkan info yang diperlukan buat jadwalin tugasnya.
+Aturan:
+- Satu task = satu item
+- Nama berbeda = item terpisah ('RPL' dan 'basdat' = 2 item)
+- Gunakan bahasa persis user untuk title
+- Jangan gabungkan task berbeda
+- Jangan tambahkan task yang tidak disebutkan user"""
 
-KAPAN TASK DIANGGAP LENGKAP (is_complete=True):
-Task cukup kalau sudah ada DUA hal ini:
-1. Output/hasil akhir yang jelas → "bikin laporan", "buat database ERD", "presentasi 10 menit"
-2. Deadline → sudah disebutkan ATAU user bilang "belum ada", "ga tau", "masih lama"
+DETAIL_PARSE_SYSTEM = """Ekstrak informasi dari jawaban user tentang sebuah tugas.
 
-Yang TIDAK perlu ditanya:
-- Format file, jumlah halaman, template → tidak mempengaruhi penjadwalan
-- Peserta meeting → tidak relevan
-- Cara mengerjakan, tools yang dipakai → urusan user sendiri
-- Prioritas → itu tugas Prioritizer
+Pisahkan:
+1. Deskripsi: output/hasil tugas + perasaan user + catatan apapun
+2. Deadline: frasa waktu dari ucapan user
+3. Konfirmasi tidak ada deadline
 
-ATURAN TANYA:
-- Satu task per giliran, jangan bombardir user dengan banyak pertanyaan
-- Tanya output + deadline dalam satu napas yang natural
-- Selalu kasih contoh jawaban dalam kurung
-  BAD: "Bisa ceritain tugasnya lebih detail?"
-  GOOD: "Tugas RPL-nya bikin apa? (misal: aplikasi, laporan, atau presentasi?) Terus deadline-nya kapan?"
-- Kalau user jawab singkat atau ga lengkap tapi ada gambaran → is_complete=True, lanjut
-- Kalau user bilang "ga tau" / "udah itu aja" → is_complete=True, jangan kejar
+Aturan:
+- deadline_confirmed_none=True HANYA jika user eksplisit bilang tidak ada deadline
+- Jangan asumsikan deadline dari konteks
+- Isi parsed_description selengkap mungkin dari apapun yang user ceritakan"""
 
-BAHASA:
-Ikuti persis bahasa user. Santai dan gaul kalau user santai. Formal kalau user formal.
-Jangan terlalu banyak tanda seru. Jangan lebay."""
+REVIEW_SYSTEM = """Kamu adalah teman yang hangat dan supportif, membantu user yang lagi overwhelmed dengan kegiatannya.
+
+Gunakan bahasa PERSIS sama dengan user — santai dan gaul kalau user santai, lebih formal kalau user formal.
+
+Output harus berisi DUA bagian dipisah dengan |||:
+
+BAGIAN 1 — Ringkasan yang meyakinkan:
+- Buka dengan kalimat yang menegaskan bahwa kamu SUDAH berhasil mencatat semuanya.
+  Contoh bagus: "Oke, aku udah catet semua yang lo ceritain tadi ya —"
+  Contoh bagus: "Siap, semuanya udah aku rekap nih:"
+  Contoh JELEK: "Wah pusing ya..." (jangan mulai dengan validasi perasaan di sini)
+- Lanjutkan dengan bullet ringkasan per item: nama kegiatan, apa yang dikerjakan, target/deadline
+- Nada: meyakinkan, seperti teman yang bilang "tenang, aku udah pegang semuanya"
+- Maksimal 6 kalimat
+
+BAGIAN 2 — Penawaran untuk tambah cerita (BUKAN pertanyaan langsung):
+- Ini adalah PENAWARAN, bukan interogasi. User boleh iya boleh tidak.
+- WAJIB sebut SEMUA task yang ada di daftar — jangan highlight hanya satu task saja.
+  Contoh bagus: "Kalau lo mau ceritain lebih — misalnya soal PEMDAS-nya seberapa susah, atau meeting-nya gimana persiapannya, atau tugas lain yang bikin worried — boleh banget."
+  Contoh JELEK: "Mau ceritain soal PEMDAS-nya?" (hanya menyebut satu task, padahal ada lebih dari satu)
+- Sebutkan beberapa contoh hal yang bisa ditambahin: perasaan user terhadap masing-masing task, seberapa sulit / mudah, progress udah sampai mana, yang bikin was-was atau stuck — sesuaikan dengan konteks semua task.
+- Tutup dengan kalimat yang membebaskan user: kalau udah cukup, bisa langsung lanjut.
+  Contoh: "Tapi kalau udah oke dan mau langsung lanjut juga gapapa kok!"
+  Contoh: "Atau kalau udah pas semua, kita gas aja langsung!"
+- Tone: ringan, tidak memaksa, seperti teman yang nawarin ngobrol lebih lanjut
+- Maksimal 3 kalimat
+
+Format output PERSIS: [ringkasan]|||[penawaran]
+Tidak ada teks lain di luar format ini."""
+
+FEEDBACK_SYSTEM = """Kamu adalah teman yang supportif merespons cerita tambahan dari user.
+ 
+User baru saja mengirim info tambahan. BACA DULU konteksnya — respons harus sesuai dengan JENIS info yang dikirim.
+ 
+LANGKAH PERTAMA — DETEKSI JENIS PESAN:
+A. NETRAL / UPDATE INFO: user hanya update fakta tanpa ekspresi emosi
+   Ciri: update deadline, koreksi data, tambah info teknis, tanpa kata stres/panik/capek/susah
+   Contoh: "deadlinenya ternyata besok", "eh salah, itu 15 soal bukan 10", "meetingnya jam 3"
+   → RESPONS: acknowledge singkat saja, JANGAN tenangin, JANGAN kasih saran apapun
+   → Format: 1 kalimat acknowledge yang natural
+   → Contoh respons: "Siap, noted!" / "Oke, udah aku update." / "Got it, deadlinenya besok ya."
+ 
+B. KESULITAN / PANIK / STRESS: ada ekspresi emosi negatif yang jelas
+   Ciri: ada kata panik, stress, susah, takut, ga bisa, overwhelmed, capek, pusing
+   → RESPONS: validasi perasaan (1 kalimat) + saran micro fisik/mental + sebut sistem akan bantu
+   → Saran micro yang boleh: tarik napas, minum air, istirahat bentar, tidur sebentar
+   → DILARANG: saran cara kerjain tugas, urutan pengerjaan, prioritas — itu tugas agent lain
+   → Contoh: "Wajar panik, tapi tarik napas dulu — nanti kita atur bareng sama sistemnya."
+ 
+C. PROGRESS / PENCAPAIAN: user cerita hal positif
+   Ciri: udah selesai sebagian, ada progress, pencapaian kecil
+   → RESPONS: puji dengan tulus dan spesifik, tidak lebay, 1 kalimat
+ 
+D. CAMPURAN: ada update info sekaligus ekspresi emosi
+   → RESPONS: acknowledge updatenya dulu, lalu validasi emosinya — tetap tanpa saran pengerjaan
+ 
+ATURAN KERAS (berlaku untuk semua jenis):
+- DILARANG: saran cara mengerjakan tugas, urutan pengerjaan, prioritas
+- Gunakan bahasa PERSIS sama dengan user
+- Maksimal 2 kalimat, singkat dan genuine
+- Jangan ulangi info user secara harfiah
+ 
+Contoh BAGUS:
+- "deadlinenya ternyata besok" (netral) → "Siap, noted!"
+- "eh salah, meetingnya 2 jam bukan 3" (netral) → "Oke, udah aku koreksi."
+- "panik banget deadline besok, belum bisa" (stress) → "Wajar panik, tapi tarik napas dulu — nanti sistemnya bantu atur biar lebih jelas."
+- "udah cicil 5 soal" (progress) → "Nice, udah ada progresnya!"
+- "ternyata deadlinenya besok dan gua panik" (campuran) → "Noted deadlinenya — wajar panik, tapi tenang, nanti kita atur bareng."
+ 
+Contoh JELEK — JANGAN DITIRU:
+- Update deadline → "Tenang ya, pasti bisa kok!" ← JANGAN tenangin kalau tidak perlu
+- Update info → "Wah berat juga ya" ← JANGAN dramatisir
+- Stress → "Coba kerjain yang gampang dulu" ← DILARANG saran pengerjaan
+ 
+Output hanya kalimat respons saja, tanpa label atau teks tambahan."""
+
+REVIEW_ENRICH_SYSTEM = """Update deskripsi task dari cerita tambahan user.
+Gabungkan info lama dengan info baru. Jangan hapus deskripsi lama yang valid.
+Hanya update task yang relevan dengan cerita user."""
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
 
 def make_counselor(llm, _interrupt=None, calendar_client=None):
-    interrupt_fn = _interrupt if _interrupt is not None else _langgraph_interrupt
-    counselor_llm = llm.with_structured_output(CounselorOutput)
+    interrupt_fn  = _interrupt if _interrupt is not None else _langgraph_interrupt
+    discovery_llm = llm.with_structured_output(DiscoveryOutput)
+    detail_llm    = llm.with_structured_output(TaskDetailParsed)
 
     def run(state: AppState) -> dict:
-        user_msg = last_message(state)
-        raw_tasks = get_raw_tasks(state)
-        previous_hitl = get_hitl_input(state) or {}
+        raw_tasks  = get_raw_tasks(state)
+        prev_hitl  = get_hitl_input(state) or {}
+        user_msg   = last_message(state)
         loop_count = len(state.get("counselor_response") or [])
 
-        _debug("LOOP", loop_count)
-        _debug("USER MSG", user_msg)
-        _debug("RAW TASKS (before enrich)", raw_tasks)
+        _log("=== RUN ===", f"loop={loop_count} phase={prev_hitl.get('phase','init')}")
 
-        # Safety: paksa selesai setelah MAX loop
-        if loop_count >= MAX_COUNSELOR_LOOPS:
-            _debug("FORCED COMPLETE", f"loop={loop_count}")
-            forced_msg = _build_forced_completion_msg(raw_tasks, user_msg)
-            return {
-                **ai_msg(forced_msg),
-                "counselor_response": [forced_msg],
-                "counselor_done": True,
-                "hitl_status": "approved",
-                "hitl_input": None,
-            }
+        if loop_count >= MAX_LOOPS:
+            return _force_done(raw_tasks)
 
-        additional_context = previous_hitl.get("additional_context", "")
-        # FIX bug 2: asked_questions pakai TITLE task, bukan UUID
-        asked_questions = previous_hitl.get("asked_questions", [])
-        current_task_index = previous_hitl.get("current_task_index", 0)
-        is_first_loop = loop_count == 0
+        phase = prev_hitl.get("phase", "init")
 
-        # FIX bug 1: enrich DULU sebelum bangun prompt
-        # Supaya LLM lihat deskripsi yang sudah terupdate, bukan yang lama
-        if additional_context and raw_tasks:
-            raw_tasks = _apply_pre_enrich(raw_tasks, additional_context, current_task_index)
-            _debug("PRE-ENRICHED TASKS", raw_tasks)
-
-        schedule_context = _fetch_schedule_context(calendar_client, state)
-
-        # Prompt ke LLM — sekarang pakai raw_tasks yang sudah dienrich
-        prompt_content = _build_prompt(
-            user_msg=user_msg,
-            raw_tasks=raw_tasks,
-            additional_context=additional_context,
-            asked_questions=asked_questions,
-            current_task_index=current_task_index,
-            is_first_loop=is_first_loop,
-            loop_count=loop_count,
-            schedule_context=schedule_context,
-        )
-        _debug("PROMPT", prompt_content)
-
-        try:
-            output = counselor_llm.invoke([
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt_content},
-            ])
-        except Exception as e:
-            _debug("LLM ERROR", e)
-            output = _fallback_output(raw_tasks, is_first_loop)
-
-        _debug("LLM OUTPUT", output)
-
-        # Apply enrichment dari output LLM ke raw_tasks yang sudah pre-enriched
-        updated_tasks = _apply_enrichments(raw_tasks, output.enrichments)
-        _debug("UPDATED TASKS", updated_tasks)
-
-        # FIX bug 3: cari next_index dari updated_tasks langsung, bukan dari enrichments
-        next_index = _find_next_incomplete_from_tasks(updated_tasks, output.enrichments, current_task_index)
-
-        # FIX bug 2: simpan TITLE task ke asked_questions, bukan UUID
-        new_asked = list(asked_questions)
-        if output.next_incomplete_task_id:
-            # Cari title task berdasarkan task_id
-            asked_title = next(
-                (_get_field(t, "title") for t in updated_tasks
-                 if _get_field(t, "task_id") == output.next_incomplete_task_id),
-                output.next_incomplete_task_id  # fallback ke id jika tidak ketemu
-            )
-            if asked_title not in new_asked:
-                new_asked.append(asked_title)
-
-        is_confirmation = output.all_complete
-
-        # HITL interrupt
-        hitl_result = interrupt_fn({
-            "type": "counselor_chat",
-            "message": output.reply,
-            "is_confirmation": is_confirmation,
-            "current_task_index": next_index,
-            "asked_questions": new_asked,
-        }) or {}
-
-        approved = bool(hitl_result.get("approved"))
-        final_context = hitl_result.get("additional_context", "")
-
-        if not approved:
-            return {
-                **ai_msg(output.reply),
-                "raw_tasks": updated_tasks,
-                "counselor_response": [output.reply],
-                "counselor_done": False,
-                "hitl_status": "rejected",
-                "hitl_input": {
-                    **hitl_result,
-                    "asked_questions": new_asked,
-                    "current_task_index": next_index,
-                },
-            }
-
-        # Approved — enrich sekali lagi kalau ada info tambahan dari pesan approve
-        final_tasks = updated_tasks
-        if final_context and final_context.strip():
-            final_tasks = _apply_final_context(counselor_llm, updated_tasks, final_context)
-            _debug("FINAL TASKS (after enrich)", final_tasks)
-
-        full_response = (
-            f"{output.reply}\n\n"
-            f"Ini catatan tugasnya:\n{output.task_summary}\n\n"
-            f"{output.bridge}"
-        )
-
-        return {
-            **ai_msg(full_response),
-            "raw_tasks": final_tasks,
-            "counselor_response": [full_response],
-            "counselor_done": True,
-            "hitl_status": "approved",
-            "hitl_input": None,
-        }
+        if phase == "init":
+            return _phase_init(raw_tasks, user_msg, prev_hitl,
+                               discovery_llm, detail_llm, llm,
+                               interrupt_fn, loop_count)
+        elif phase == "detail":
+            return _phase_detail(raw_tasks, user_msg, prev_hitl,
+                                 detail_llm, llm, interrupt_fn, loop_count)
+        elif phase == "review":
+            return _phase_review(raw_tasks, user_msg, prev_hitl,
+                                 llm, interrupt_fn, loop_count)
+        else:
+            return _force_done(raw_tasks)
 
     return run
 
 
-# ── Prompt Builder ────────────────────────────────────────────────────────────
+# ── Phase: Init ───────────────────────────────────────────────────────────────
 
-def _build_prompt(
-    user_msg: str,
-    raw_tasks: list,
-    additional_context: str,
-    asked_questions: list[str],
-    current_task_index: int,
-    is_first_loop: bool,
-    loop_count: int,
-    schedule_context: str,
-) -> str:
-    task_context = _format_task_context(raw_tasks)
-    n_tasks = len(raw_tasks)
+def _phase_init(raw_tasks, user_msg, prev_hitl,
+                discovery_llm, detail_llm, llm,
+                interrupt_fn, loop_count):
+    """
+    Loop pertama. Satu interrupt saja.
+    Kalau vague: tanya discovery.
+    Kalau spesifik: tanya detail task[0].
+    """
+    _log("PHASE init")
 
-    parts = [
-        f"Pesan user: {user_msg}",
+    if _is_vague(raw_tasks):
+        # Tanya task apa aja dulu
+        msg = _discovery_msg(user_msg)
+        _log("INTERRUPT discovery", msg)
+        result = interrupt_fn({"type": "counselor_chat", "message": msg, "phase": "chat"}) or {}
+
+        answer = (result.get("additional_context") or "").strip()
+        _log("DISCOVERY ANSWER", answer)
+
+        if not answer:
+            return _chat_return(msg, raw_tasks, {
+                "phase": "init",
+                "current_task_index": 0,
+                "tasks_with_meta": [],
+                "review_count": 0,
+            })
+
+        new_tasks = _parse_discovery(discovery_llm, answer)
+        _log("PARSED TASKS", new_tasks)
+
+        if not new_tasks:
+            retry = (
+                "Hmm, aku belum bisa tangkap tugas-tugasnya. "
+                "Bisa sebutin lebih jelas? "
+                "Contoh: 'ada tugas RPL bikin aplikasi, sama laprak kimia deadline Jumat'"
+            )
+            interrupt_fn({"type": "counselor_chat", "message": retry, "phase": "chat"})
+            return _chat_return(retry, raw_tasks, {
+                "phase": "init",
+                "current_task_index": 0,
+                "tasks_with_meta": [],
+                "review_count": 0,
+            })
+
+        meta = _init_meta(new_tasks)
+        # Return tanpa interrupt kedua — loop berikutnya tanya detail
+        return _chat_return("", _to_tasks(meta), {
+            "phase": "detail",
+            "current_task_index": 0,
+            "tasks_with_meta": meta,
+            "review_count": 0,
+            "additional_context": "",
+        })
+
+    else:
+        # Task sudah spesifik — langsung tanya detail task[0]
+        meta    = _init_meta(raw_tasks)
+        idx     = _next_incomplete(meta, -1)
+
+        if idx is None:
+            # Sudah lengkap semua dari router
+            return _chat_return("", _to_tasks(meta), {
+                "phase": "review",
+                "current_task_index": 0,
+                "tasks_with_meta": meta,
+                "review_count": 0,
+            })
+
+        msg = _detail_q(meta[idx], is_first=True, user_msg=user_msg)
+        _log("INTERRUPT detail[0]", msg)
+        result = interrupt_fn({"type": "counselor_chat", "message": msg, "phase": "chat"}) or {}
+
+        answer = (result.get("additional_context") or "").strip()
+        meta   = _apply_answer(detail_llm, meta, idx, answer)
+        nxt    = _next_incomplete(meta, idx)
+
+        if nxt is None:
+            return _chat_return(msg, _to_tasks(meta), {
+                "phase": "review",
+                "current_task_index": 0,
+                "tasks_with_meta": meta,
+                "review_count": 0,
+            })
+
+        return _chat_return(msg, _to_tasks(meta), {
+            "phase": "detail",
+            "current_task_index": nxt,
+            "tasks_with_meta": meta,
+            "review_count": 0,
+            "additional_context": "",
+        })
+
+
+# ── Phase: Detail ─────────────────────────────────────────────────────────────
+
+def _phase_detail(raw_tasks, user_msg, prev_hitl,
+                  detail_llm, llm, interrupt_fn, loop_count):
+    """
+    Tanya satu task per loop. Satu interrupt per run.
+    """
+    _log("PHASE detail")
+
+    meta          = prev_hitl.get("tasks_with_meta") or _init_meta(raw_tasks)
+    current_idx   = prev_hitl.get("current_task_index", 0)
+    review_count  = prev_hitl.get("review_count", 0)
+
+    if current_idx >= len(meta):
+        return _chat_return("", _to_tasks(meta), {
+            "phase": "review",
+            "current_task_index": 0,
+            "tasks_with_meta": meta,
+            "review_count": review_count,
+        })
+
+    msg = _detail_q(meta[current_idx], is_first=False, user_msg=user_msg)
+    _log(f"INTERRUPT detail[{current_idx}]", msg)
+    result = interrupt_fn({"type": "counselor_chat", "message": msg, "phase": "chat"}) or {}
+
+    answer = (result.get("additional_context") or "").strip()
+    _log("DETAIL ANSWER", answer)
+
+    meta = _apply_answer(detail_llm, meta, current_idx, answer)
+    _log("META after apply", meta)
+
+    nxt = _next_incomplete(meta, current_idx)
+    _log("NEXT IDX", nxt)
+
+    if nxt is None:
+        # ALL COMPLETE — jangan interrupt di sini.
+        # Return ke routing dulu dengan phase="review".
+        # Loop berikutnya (_phase_review) yang akan generate review + interrupt.
+        _log("ALL COMPLETE -> switching to review phase")
+        return _chat_return("", _to_tasks(meta), {
+            "phase": "review",
+            "current_task_index": 0,
+            "tasks_with_meta": meta,
+            "review_count": review_count,
+            "additional_context": "",
+        })
+
+    return _chat_return(msg, _to_tasks(meta), {
+        "phase": "detail",
+        "current_task_index": nxt,
+        "tasks_with_meta": meta,
+        "review_count": review_count,
+        "additional_context": "",
+    })
+
+
+# ── Phase: Review ─────────────────────────────────────────────────────────────
+
+def _phase_review(raw_tasks, user_msg, prev_hitl,
+                  llm, interrupt_fn, loop_count):
+    """
+    Generate review, interrupt, tunggu approve atau cerita tambahan.
+    """
+    _log("PHASE review")
+
+    meta          = prev_hitl.get("tasks_with_meta") or _init_meta(raw_tasks)
+    review_count  = prev_hitl.get("review_count", 0)
+    extra         = (prev_hitl.get("additional_context") or "").strip()
+    tasks         = _to_tasks(meta)
+
+    # Kalau ada cerita tambahan: generate feedback + enrich task
+    feedback_msg = ""
+    if extra:
+        # 1. Generate feedback hangat dulu (1 LLM call)
+        feedback_msg = _gen_feedback(llm, extra, tasks)
+        _log("FEEDBACK MSG", feedback_msg)
+
+        # 2. Enrich task dari cerita user
+        try:
+            enrich_llm   = llm.with_structured_output(ReviewEnrichOutput)
+            task_context = "\n".join(
+                f"- task_id={t['task_id']} | {t['title']}: {t.get('description') or '(kosong)'}"
+                for t in meta
+            )
+            res      = enrich_llm.invoke([
+                {"role": "system", "content": REVIEW_ENRICH_SYSTEM},
+                {"role": "user",   "content": f"Cerita: {extra}\n\nTask:\n{task_context}"},
+            ])
+            task_map = {t["task_id"]: dict(t) for t in meta}
+            for u in res.updates:
+                if u.task_id in task_map:
+                    if u.updated_description:
+                        task_map[u.task_id]["description"] = u.updated_description
+                    if u.updated_raw_time:
+                        task_map[u.task_id]["raw_time"] = u.updated_raw_time
+            meta  = list(task_map.values())
+            tasks = _to_tasks(meta)
+            _log("ENRICHED TASKS", meta)
+        except Exception as e:
+            _log("ENRICH ERROR", e)
+
+    return _do_review(tasks, meta, user_msg, llm, interrupt_fn, loop_count, review_count,
+                      feedback_msg=feedback_msg)
+
+
+def _do_review(tasks, meta, user_msg, llm, interrupt_fn, loop_count, review_count,
+               feedback_msg: str = ""):
+    """
+    Generate review + offer, interrupt, tunggu approve atau cerita tambahan.
+
+    feedback_msg: kalimat feedback dari cerita sebelumnya (ditampilkan sebelum review baru).
+                  Kosong di review pertama.
+    """
+    if review_count >= MAX_REVIEW:
+        return _force_done(tasks)
+
+    # Generate review body + tawaran curhat kontekstual dalam 1 LLM call
+    review_body, offer_msg = _gen_review(llm, tasks, user_msg)
+    _log("REVIEW BODY", review_body)
+    _log("OFFER MSG", offer_msg)
+
+    # Gabungkan: feedback (kalau ada) + review + tawaran
+    if feedback_msg:
+        full_review = f"{feedback_msg}\n\n{review_body}\n\n{offer_msg}"
+    else:
+        full_review = f"{review_body}\n\n{offer_msg}"
+
+    _log("FULL REVIEW MSG", full_review)
+
+    task_summary = [
+        {"task_id": t.get("task_id",""), "title": t.get("title",""),
+         "description": t.get("description",""), "raw_time": t.get("raw_time")}
+        for t in tasks
     ]
 
-    if additional_context:
-        parts.append(f"Jawaban/info tambahan dari user: {additional_context}")
+    result = interrupt_fn({
+        "type": "counselor_review",
+        "message": full_review,
+        "phase": "review",
+        "task_summary": task_summary,
+    }) or {}
 
-    if schedule_context:
-        parts.append(f"\nKonteks jadwal existing (jangan ubah):\n{schedule_context}")
+    _log("REVIEW RESULT", result)
 
-    parts.append(f"\nTotal task terdeteksi: {n_tasks}")
-    parts.append(f"Task list:\n{task_context}")
+    approved = bool(result.get("approved"))
+    extra    = (result.get("additional_context") or "").strip()
 
-    if is_first_loop:
-        parts.append("\n[INI LOOP PERTAMA — validasi perasaan jika ada ekspresi stres, lalu tanya task ke-1]")
+    if approved:
+        bridge   = f"Siap! Sekarang kita atur jadwal buat {len(tasks)} tugas ini ya biar semua kelar tepat waktu."
+        full_msg = f"{full_review}\n\n{bridge}"
+        return {
+            **ai_msg(full_msg),
+            "raw_tasks":          tasks,
+            "counselor_response": [full_msg],
+            "counselor_done":     True,
+            "hitl_status":        "approved",
+            "hitl_input":         None,
+        }
+
+    return _chat_return(full_review, tasks, {
+        "phase":              "review",
+        "current_task_index": 0,
+        "tasks_with_meta":    meta,
+        "review_count":       review_count + 1,
+        "additional_context": extra,
+    })
+
+
+# ── Task Parsing ──────────────────────────────────────────────────────────────
+
+def _parse_discovery(discovery_llm, user_answer: str) -> list[dict]:
+    try:
+        result = discovery_llm.invoke([
+            {"role": "system", "content": DISCOVERY_SYSTEM},
+            {"role": "user",   "content": f"User menyebutkan: {user_answer}"},
+        ])
+        tasks = []
+        for t in result.tasks:
+            tasks.append({
+                "task_id":    str(uuid4()),
+                "title":      t.title,
+                "description": "",
+                "raw_time":   t.raw_time,
+                "raw_input":  t.raw_input or user_answer,
+                "category":   t.category,
+            })
+        return tasks
+    except Exception as e:
+        _log("PARSE DISCOVERY ERROR", e)
+        return []
+
+
+def _apply_answer(detail_llm, meta: list, idx: int, answer: str) -> list:
+    """
+    Parse jawaban user untuk task[idx] dan update meta.
+    Deterministik: kalau LLM gagal, simpan jawaban mentah.
+    Selalu set deadline_confirmed=True setelah dipanggil.
+    """
+    if idx >= len(meta):
+        return meta
+
+    result = [dict(t) for t in meta]
+    target = result[idx]
+
+    if not answer:
+        target["deadline_confirmed"]  = True
+        target["description_filled"]  = True
+        result[idx] = target
+        return result
+
+    try:
+        parsed = detail_llm.invoke([
+            {"role": "system", "content": DETAIL_PARSE_SYSTEM},
+            {"role": "user",   "content": (
+                f"Task: {target.get('title','task ini')}\n"
+                f"Jawaban user: {answer}\n\n"
+                f"Ekstrak deskripsi + deadline."
+            )},
+        ])
+
+        old_desc = target.get("description") or ""
+        if parsed.parsed_description and parsed.parsed_description.strip():
+            new_desc = parsed.parsed_description.strip()
+            target["description"] = f"{old_desc}. {new_desc}".strip(". ") if old_desc else new_desc
+        elif answer:
+            target["description"] = answer if not old_desc else f"{old_desc}. {answer}"
+
+        if parsed.parsed_raw_time and parsed.parsed_raw_time.strip():
+            target["raw_time"] = parsed.parsed_raw_time.strip()
+        # deadline_confirmed_none tidak ubah raw_time — hanya berarti "sudah dikonfirmasi kosong"
+
+    except Exception as e:
+        _log("APPLY ANSWER ERROR", e)
+        old_desc = target.get("description") or ""
+        target["description"] = f"{old_desc}. {answer}".strip(". ") if old_desc else answer
+
+    target["deadline_confirmed"] = True
+    target["description_filled"] = True
+    result[idx] = target
+    return result
+
+
+# ── Review Generation ─────────────────────────────────────────────────────────
+
+def _gen_review(llm, tasks: list, user_msg: str) -> tuple[str, str]:
+    """
+    Returns (review_body, offer_message).
+    review_body: ringkasan task
+    offer_message: tawaran curhat yang spesifik dan kontekstual
+    """
+    try:
+        task_lines = []
+        for t in tasks:
+            desc     = t.get("description") or "(belum ada deskripsi)"
+            deadline = t.get("raw_time") or "belum ada deadline"
+            task_lines.append(f"- {t.get('title','Task')}: {desc}, deadline: {deadline}")
+
+        result = llm.invoke([
+            {"role": "system", "content": REVIEW_SYSTEM},
+            {"role": "user",   "content": (
+                f"Pesan awal user: {user_msg}\n\n"
+                f"Task:\n" + "\n".join(task_lines)
+            )},
+        ])
+        raw = str(result.content) if hasattr(result, "content") else str(result)
+
+        # Parse dua bagian yang dipisah |||
+        if "|||" in raw:
+            parts = raw.split("|||", 1)
+            review_body  = parts[0].strip()
+            offer_msg    = parts[1].strip()
+        else:
+            # Fallback kalau LLM tidak ikut format
+            review_body = raw.strip()
+            offer_msg   = _fallback_offer(tasks)
+
+        return review_body, offer_msg
+
+    except Exception as e:
+        _log("REVIEW GEN ERROR", e)
+        return _fallback_review(tasks), _fallback_offer(tasks)
+
+
+def _gen_feedback(llm, extra: str, tasks: list) -> str:
+    """
+    Generate feedback hangat dari cerita tambahan user.
+    Dipanggil sebelum review terbaru ditampilkan.
+    """
+    try:
+        task_context = ", ".join(t.get("title","task") for t in tasks)
+        result = llm.invoke([
+            {"role": "system", "content": FEEDBACK_SYSTEM},
+            {"role": "user",   "content": (
+                f"Task user: {task_context}\n"
+                f"Cerita tambahan user: {extra}"
+            )},
+        ])
+        return str(result.content).strip() if hasattr(result, "content") else str(result).strip()
+    except Exception as e:
+        _log("FEEDBACK GEN ERROR", e)
+        return "Makasih udah cerita lebih!"
+
+
+def _fallback_offer(tasks: list) -> str:
+    """Fallback tawaran curhat kalau LLM gagal — sebut semua task."""
+    if not tasks:
+        return "Ada yang mau ditambahin atau diubah?"
+    titles = [t.get("title", "tugas ini") for t in tasks]
+    if len(titles) == 1:
+        task_str = titles[0]
+    elif len(titles) == 2:
+        task_str = f"{titles[0]} dan {titles[1]}"
     else:
-        parts.append(f"\n[Loop ke-{loop_count + 1}. Task yang baru dijawab index ke-{current_task_index}.]")
-        parts.append("Acknowledge jawaban user dulu, lalu lanjut tanya task berikutnya yang belum lengkap.")
+        task_str = ", ".join(titles[:-1]) + f", dan {titles[-1]}"
+    return (
+        f"Kalau lo mau ceritain lebih — misalnya soal {task_str}, "
+        f"perasaan lo terhadap salah satunya, atau langkah yang udah ada di pikiran — boleh banget. "
+        f"Tapi kalau udah oke semua, kita gas aja langsung!"
+    )
 
-    if asked_questions:
-        parts.append(
-            "\nTask yang sudah ditanyakan (jangan tanya lagi, lanjut ke task berikutnya):\n"
-            + "\n".join(f"- {q}" for q in asked_questions)
+
+def _fallback_review(tasks: list) -> str:
+    lines = [
+        f"\u2022 {t.get('title','Task')}: {t.get('description') or 'belum ada detail'}, "
+        f"deadline {t.get('raw_time') or 'belum ada'}"
+        for t in tasks
+    ]
+    return (
+        "Oke, ini yang aku tangkap dari tugasmu:\n"
+        + "\n".join(lines)
+        + "\n\nKalau ada detail lain yang mau ditambahin — perasaanmu, langkah-langkah, "
+        "atau apapun — boleh ceritain. Atau kalau udah oke, langsung approve aja!"
+    )
+
+
+# ── Meta Helpers ──────────────────────────────────────────────────────────────
+
+def _is_vague(raw_tasks: list) -> bool:
+    if not raw_tasks:
+        return True
+    vague_kw = [
+        "belum jelas","tidak disebutkan","tidak diketahui","banyak tugas",
+        "tugas numpuk","belum ditentukan","tidak ada detail","tidak tahu",
+    ]
+    if len(raw_tasks) == 1:
+        t       = raw_tasks[0]
+        title   = (_get(t,"title") or "").lower()
+        desc    = (_get(t,"description") or "").lower()
+        generic = ["banyak tugas","tugas","kerjaan","task","banyak kerjaan","pekerjaan"]
+        if any(g == title for g in generic):
+            return True
+        if any(kw in desc for kw in vague_kw):
+            return True
+    return all(
+        any(kw in (_get(t,"description") or "").lower() for kw in vague_kw)
+        for t in raw_tasks
+    )
+
+
+def _init_meta(raw_tasks: list) -> list[dict]:
+    result = []
+    for t in raw_tasks:
+        d       = _to_dict(t)
+        desc    = d.get("description") or ""
+        vague   = ["belum jelas","tidak disebutkan","tidak diketahui"]
+        has_desc = len(desc) > 15 and not any(kw in desc.lower() for kw in vague)
+        d.setdefault("deadline_confirmed", d.get("raw_time") is not None)
+        d.setdefault("description_filled", has_desc)
+        result.append(d)
+    return result
+
+
+def _next_incomplete(meta: list, after: int) -> int | None:
+    for i, t in enumerate(meta):
+        if i <= after:
+            continue
+        if not t.get("description_filled") or not t.get("deadline_confirmed"):
+            return i
+    return None
+
+
+def _to_tasks(meta: list) -> list[dict]:
+    return [{
+        "task_id":    t.get("task_id") or str(uuid4()),
+        "title":      t.get("title",""),
+        "description": t.get("description",""),
+        "raw_time":   t.get("raw_time"),
+        "raw_input":  t.get("raw_input",""),
+        "category":   t.get("category","biasa"),
+    } for t in meta]
+
+
+# ── Message Builders ──────────────────────────────────────────────────────────
+
+def _discovery_msg(user_msg: str) -> str:
+    has_stress = _stress(user_msg)
+    if has_stress:
+        opening = (
+            "Oke, tenang dulu — wajar banget kok ngerasa kayak gitu kalau semuanya dateng barengan. "
+            "Kita urai pelan-pelan bareng-bareng ya, biar kepala lo ga makin mumet."
         )
+    else:
+        opening = (
+            "Oke, aku bantu atur semuanya ya. "
+            "Kita lihat dulu apa aja yang lagi ada."
+        )
+    ask = (
+        "Coba ceritain dulu — ada kegiatan atau kewajiban apa aja yang lagi numpuk? "
+        "(contoh: 'tugas basdat, meeting sama klien, olahraga rutin, laprak kimia')"
+    )
+    return f"{opening} {ask}"
 
-    if loop_count >= MAX_COUNSELOR_LOOPS - 1:
-        parts.append(f"\n[LOOP TERAKHIR — set all_complete=True untuk semua task]")
 
-    return "\n".join(parts)
+def _detail_q(task_meta: dict, is_first: bool, user_msg: str) -> str:
+    title     = task_meta.get("title", "yang ini")
+    is_stress = _stress(user_msg)
 
+    if is_first:
+        if is_stress:
+            warmup = (
+                "Oke, kita bedah satu-satu pelan-pelan ya — "
+                "biar semuanya keliatan lebih manageable dan ga bikin kepala penuh. "
+            )
+        else:
+            warmup = "Oke, kita mulai dari yang pertama ya. "
+        prefix = f"{warmup}Sekarang ceritain dulu soal **{title}**:"
+    else:
+        prefix = f"Oke noted! Sekarang **{title}**:"
+
+    return (
+        f"{prefix} "
+        f"kira-kira ini ngerjain apa dan ada target selesainya kapan? "
+        f"(contoh: 'bikin laporan analisis, target Jumat' atau "
+        f"'bikin ERD database, belum ada deadline tapi masih perlu belajar konsepnya dulu')"
+    )
+
+
+def _stress(msg: str) -> bool:
+    signals = [
+        "pusing","stress","stres","capek","cape","overwhelmed","ga tau","gak tau",
+        "bingung","panik","lelah","penat","mumet","galau","ga sanggup","gak sanggup",
+        "burnout","anjay","anjir","gila","ga kuat","susah","berat",
+    ]
+    lower = msg.lower()
+    return any(s in lower for s in signals)
+
+
+# ── Return Helpers ────────────────────────────────────────────────────────────
+
+def _chat_return(msg: str, raw_tasks: list, hitl_state: dict) -> dict:
+    return {
+        **ai_msg(msg),
+        "raw_tasks":           raw_tasks,
+        "counselor_response":  [msg] if msg else [],
+        "counselor_done":      False,
+        "hitl_status":         "rejected",
+        "hitl_input":          hitl_state,
+    }
+
+
+def _force_done(raw_tasks: list) -> dict:
+    titles   = [_get(t,"title") or "task" for t in raw_tasks]
+    task_str = " dan ".join(titles) if len(titles) <= 2 else ", ".join(titles[:-1]) + f", dan {titles[-1]}"
+    msg      = f"Oke, aku udah catat semuanya. Yuk kita langsung atur jadwal buat {task_str}!"
+    return {
+        **ai_msg(msg),
+        "raw_tasks":           raw_tasks,
+        "counselor_response":  [msg],
+        "counselor_done":      True,
+        "hitl_status":         "approved",
+        "hitl_input":          None,
+    }
+
+
+
+# ── Calendar Context (opsional — hanya untuk konteks prompt) ─────────────────
+# Fungsi-fungsi ini dipanggil jika calendar_client diinjek via make_counselor.
+# Tidak mempengaruhi state, output, atau agent lain — murni konteks tambahan.
 
 def _fetch_schedule_context(calendar_client, state: AppState) -> str:
+    """Ambil jadwal existing dari calendar untuk konteks LLM. Return string kosong jika gagal."""
     if calendar_client is None:
         return ""
 
@@ -374,7 +836,7 @@ def _fetch_schedule_context(calendar_client, state: AppState) -> str:
     try:
         schedules = calendar_client.list_schedules(token=token)
     except Exception as err:
-        _debug("CALENDAR CONTEXT ERROR", err)
+        _log("CALENDAR CONTEXT ERROR", err)
         return ""
 
     if not schedules:
@@ -384,208 +846,35 @@ def _fetch_schedule_context(calendar_client, state: AppState) -> str:
 
 
 def _format_schedule_context(schedules: list[dict]) -> str:
+    """Format daftar jadwal jadi string ringkas untuk konteks prompt."""
     lines: list[str] = []
     for item in schedules[:5]:
-        title = str(item.get("title") or "(tanpa judul)")
+        title      = str(item.get("title") or "(tanpa judul)")
         start_time = item.get("startTime") or item.get("start_time")
-        deadline = item.get("deadline") or item.get("endTime")
-        status = item.get("status") or "pending"
-        time_bits = []
+        deadline   = item.get("deadline") or item.get("endTime")
+        status     = item.get("status") or "pending"
+        time_bits  = []
         if start_time:
             time_bits.append(f"mulai: {start_time}")
         if deadline:
             time_bits.append(f"selesai: {deadline}")
         time_part = f" ({', '.join(time_bits)})" if time_bits else ""
         lines.append(f"- {title} [{status}]{time_part}")
-
-    return "\n".join(lines)
-
-
-# ── Enrichment ────────────────────────────────────────────────────────────────
-
-def _apply_enrichments(raw_tasks: list, enrichments: list[TaskEnrichment]) -> list:
-    task_map: dict[str, dict] = {
-        _get_field(t, "task_id"): _to_dict(t)
-        for t in raw_tasks
-        if _get_field(t, "task_id")
-    }
-
-    for e in enrichments:
-        tid = e.task_id
-        if tid not in task_map:
-            continue
-        ex = task_map[tid]
-
-        if e.updated_title and e.updated_title.strip():
-            ex["title"] = e.updated_title.strip()
-
-        if e.updated_description and e.updated_description.strip():
-            ex["description"] = e.updated_description.strip()
-
-        if e.updated_raw_time is not None:
-            ex["raw_time"] = e.updated_raw_time.strip() if e.updated_raw_time.strip() else None
-
-        if e.updated_category is not None:
-            ex["category"] = e.updated_category
-
-        task_map[tid] = ex
-
-    return list(task_map.values())
+    return "".join(lines)
 
 
-def _apply_final_context(counselor_llm, raw_tasks: list, final_context: str) -> list:
-    """Enrich dengan info yang user kasih saat approve (misal koreksi atau tambahan)."""
-
-    class QuickItem(BaseModel):
-        task_id: str
-        updated_description: Optional[str] = Field(default=None)
-        updated_raw_time: Optional[str] = Field(default=None)
-
-    class QuickOut(BaseModel):
-        tasks: list[QuickItem]
-
-    try:
-        result = counselor_llm.with_structured_output(QuickOut).invoke([
-            {"role": "system", "content": "Update task dengan info koreksi/tambahan dari user. Jangan overwrite data valid yang sudah ada."},
-            {"role": "user", "content": (
-                f"Info koreksi/tambahan: {final_context}\n\n"
-                f"Tasks:\n{_format_task_context(raw_tasks)}"
-            )},
-        ])
-        task_map = {_get_field(t, "task_id"): _to_dict(t) for t in raw_tasks if _get_field(t, "task_id")}
-        for item in result.tasks:
-            if item.task_id not in task_map:
-                continue
-            ex = task_map[item.task_id]
-            if item.updated_description and item.updated_description.strip():
-                ex["description"] = item.updated_description.strip()
-            if item.updated_raw_time is not None:
-                ex["raw_time"] = item.updated_raw_time.strip() if item.updated_raw_time.strip() else None
-            task_map[item.task_id] = ex
-        return list(task_map.values())
-    except Exception:
-        return raw_tasks
+def _extract_auth_token(metadata: dict) -> str | None:
+    """Ekstrak auth token dari metadata jika ada."""
+    for key in ("auth_token", "access_token", "authorization"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# ── Generic Utils ─────────────────────────────────────────────────────────────
 
-def _find_next_incomplete_index(enrichments: list[TaskEnrichment], current_index: int) -> int:
-    """Cari index task berikutnya yang belum complete, mulai dari current+1."""
-    for i, e in enumerate(enrichments):
-        if i > current_index and not e.is_complete:
-            return i
-    return current_index
-
-
-def _apply_pre_enrich(raw_tasks: list, additional_context: str, current_task_index: int) -> list:
-    """
-    FIX bug 1: Update deskripsi task yang BARU DITANYA (index = current_task_index)
-    dengan jawaban user (additional_context) sebelum prompt dibuat.
-    Ini deterministik — tidak pakai LLM, cukup append ke description yang ada.
-    LLM enrich yang lebih canggih tetap dilakukan via _apply_enrichments setelahnya.
-    """
-    if not raw_tasks or not additional_context:
-        return raw_tasks
-
-    target_idx = min(current_task_index, len(raw_tasks) - 1)
-    result = [_to_dict(t) for t in raw_tasks]
-    target = result[target_idx]
-
-    current_desc = target.get("description") or ""
-    # Append jawaban user ke deskripsi — LLM akan refinement setelahnya
-    if current_desc and additional_context not in current_desc:
-        target["description"] = f"{current_desc}; jawaban user: {additional_context}"
-    elif not current_desc:
-        target["description"] = additional_context
-
-    result[target_idx] = target
-    return result
-
-
-def _find_next_incomplete_from_tasks(
-    updated_tasks: list,
-    enrichments: list[TaskEnrichment],
-    current_index: int,
-) -> int:
-    """
-    FIX bug 3: Cari index task berikutnya yang belum complete.
-    Pakai is_complete dari enrichments yang di-map ke task_id,
-    lalu cari task di updated_tasks mulai dari current_index + 1.
-    """
-    # Buat map task_id -> is_complete dari enrichments
-    complete_map: dict[str, bool] = {e.task_id: e.is_complete for e in enrichments}
-
-    for i, t in enumerate(updated_tasks):
-        if i <= current_index:
-            continue
-        tid = _get_field(t, "task_id")
-        # Kalau tidak ada di complete_map, anggap belum complete
-        if not complete_map.get(tid, False):
-            return i
-
-    return current_index  # semua sudah complete atau tidak ada yang lebih tinggi
-
-
-def _build_forced_completion_msg(raw_tasks: list, user_msg: str) -> str:
-    titles = [_get_field(t, "title") or "task" for t in raw_tasks]
-    task_list = " dan ".join(titles) if len(titles) <= 2 else ", ".join(titles[:-1]) + f", dan {titles[-1]}"
-    return (
-        f"Oke, aku udah catat semuanya. "
-        f"Yuk kita langsung atur jadwal buat {task_list}!"
-    )
-
-
-def _format_task_context(raw_tasks: list) -> str:
-    if not raw_tasks:
-        return "(tidak ada task)"
-    lines = []
-    for i, t in enumerate(raw_tasks):
-        tid = _get_field(t, "task_id") or "?"
-        title = _get_field(t, "title") or "(no title)"
-        desc = _get_field(t, "description") or "(belum ada deskripsi)"
-        raw_time = _get_field(t, "raw_time")
-        category = _get_field(t, "category") or "biasa"
-        time_str = f"deadline: {raw_time}" if raw_time else "deadline: BELUM ADA"
-        lines.append(
-            f"[{i}] task_id={tid} | {title} | kategori: {category} | {time_str}\n"
-            f"     deskripsi: {desc}"
-        )
-    return "\n".join(lines)
-
-
-def _fallback_output(raw_tasks: list, is_first_loop: bool) -> CounselorOutput:
-    titles = [_get_field(t, "title") or "task" for t in raw_tasks]
-    task_list = " dan ".join(titles[:2])
-    first_task = titles[0] if titles else "tugasmu"
-
-    reply = (
-        f"Tenang, aku bantu atur ya. Kita mulai dari {first_task} dulu — "
-        f"kira-kira ngerjain apa dan deadline-nya kapan?"
-        if is_first_loop else
-        f"Makasih, noted! Lanjut ke task berikutnya ya — "
-        f"kira-kira ngerjain apa dan deadline-nya kapan?"
-    )
-
-    return CounselorOutput(
-        enrichments=[
-            TaskEnrichment(
-                task_id=_get_field(t, "task_id") or "?",
-                is_complete=False,
-            )
-            for t in raw_tasks
-        ],
-        all_complete=False,
-        reply=reply,
-        next_incomplete_task_id=_get_field(raw_tasks[0], "task_id") if raw_tasks else None,
-        task_summary="\n".join(
-            f"• {_get_field(t, 'title') or 'Task'}: {(_get_field(t, 'description') or '-')[:60]}"
-            for t in raw_tasks
-        ),
-        bridge=f"Yuk kita jadwalin {task_list} sekarang.",
-    )
-
-
-def _get_field(task, field: str):
+def _get(task, field: str):
     if hasattr(task, field):
         return getattr(task, field)
     if isinstance(task, dict):
@@ -599,11 +888,3 @@ def _to_dict(task) -> dict:
     if isinstance(task, dict):
         return dict(task)
     return {}
-
-
-def _extract_auth_token(metadata: dict) -> str | None:
-    for key in ("auth_token", "access_token", "authorization"):
-        value = metadata.get(key)
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
