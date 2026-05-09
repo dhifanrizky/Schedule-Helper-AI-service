@@ -2,7 +2,7 @@
 
 import { useState, useRef, FormEvent, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
-import { Message, QuestionnairePayload } from "@/types";
+import { Message, QuestionnairePayload, RawTasks } from "@/types";
 import { buildUserContent } from "@/utils/chatPayload";
 import { API_URL, APP_TOKEN } from "@/utils/const";
 
@@ -202,9 +202,8 @@ export function useChat(userEmail?: string) {
       controlBuffer = "";
 
       combined = combined.replace(CONTROL_TOKEN_PATTERN, (token) => {
-        let replacementText = ""; // Default: hapus token dari stream
-
-        // 1. Tangkap Thread ID
+        let replacementText = ""; 
+        
         if (!threadIdCaptured) {
           const threadMatch = THREAD_ID_PATTERN.exec(token);
           if (threadMatch) {
@@ -213,7 +212,6 @@ export function useChat(userEmail?: string) {
           }
         }
 
-        // 2. Tangkap Execution Complete
         const execMatch = EXECUTION_COMPLETE_PATTERN.exec(token);
         if (execMatch) {
           try {
@@ -231,19 +229,17 @@ export function useChat(userEmail?: string) {
           }
         }
 
-        // 3. Tangkap Agent Step (BARU)
         const agentMatch = AGENT_STEP_PATTERN.exec(token);
         if (agentMatch) {
           try {
             const stepData = JSON.parse(agentMatch[1]);
             const nodeName = stepData?.update?.node;
 
-            // Format JSON Agent Step menjadi teks yang rapi untuk ditampilkan ke User
-            if (nodeName === "router") {
-              const intent =
-                stepData.update?.update?.current_intent || "unknown";
-              const tasks = stepData.update?.update?.raw_tasks?.length || 0;
-              // Output teks ini akan masuk ke dalam chatbox user
+            console.log("update data: ", stepData?.update)
+            const tasks : RawTasks[] = stepData.update?.update?.raw_tasks || [];
+            if (tasks.length > 0 && nodeName !== "__interrupt__") {
+              console.log('lebih 0');
+              sessionStorage.setItem('raw_tasks', JSON.stringify(tasks));
             } else if (nodeName === "__interrupt__") {
               // Interrupt biasanya ditimpa oleh HITL, jadi kita biarkan kosong agar tidak double
               replacementText = "";

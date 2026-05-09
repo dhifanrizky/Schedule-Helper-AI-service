@@ -1,3 +1,47 @@
+import { useState } from "react";
+
+interface SliderWithTooltipProps {
+  value: number;
+  onChange: (val: number) => void;
+}
+
+function SliderWithTooltip({ value, onChange }: SliderWithTooltipProps) {
+  const [isClicked, setIsClicked] = useState(false);
+
+  return (
+    <div className="relative w-full flex items-center">
+      {isClicked && (
+        <div
+          className="absolute -top-10 bg-[#8A38F5] text-white text-[12px] font-semibold px-3 py-1 rounded-md shadow-md z-10 
+                     after:content-[''] after:absolute after:-bottom-1 after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-[#8A38F5]"
+          style={{
+            left: `calc(${value}%)`,
+            transform: "translateX(-50%)",
+          }}
+        >
+          {value}%
+        </div>
+      )}
+      <input
+        type="range"
+        min="0"
+        max="100"
+        step="1"
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        style={{
+          background: `linear-gradient(to right, #8A38F5 ${value}%, #E5E7EB ${value}%)`,
+        }}
+        className="slider-button w-full cursor-pointer"
+        onMouseDown={() => setIsClicked(true)}
+        onMouseUp={() => setIsClicked(false)}
+        onTouchStart={() => setIsClicked(true)}
+        onTouchEnd={() => setIsClicked(false)}
+      />
+    </div>
+  );
+}
+
 interface QuestionnaireCardProps {
   energyLevel: number;
   setEnergyLevel: (val: number) => void;
@@ -19,9 +63,16 @@ export function QuestionnaireCard({
   setAvailableTime,
   isDropdownOpen,
   setIsDropdownOpen,
-  onComplete
+  onComplete,
 }: QuestionnaireCardProps) {
-  const timeOptions = ["Less than 2 Hours", "2 - 4 Hours", "4 - 6 Hours", "More than 6 Hours"];
+  const timeOptions = [
+    "Less than 2 Hours",
+    "2 - 4 Hours",
+    "4 - 6 Hours",
+    "More than 6 Hours",
+  ];
+
+  // Lihat? State untuk klik slider sudah hilang dari sini, karena sudah diurus di SliderWithTooltip
 
   return (
     <div className="w-full max-w-2xl bg-white border border-[#E5E7EB] rounded-[20px] p-6 shadow-sm mt-14 animate-in fade-in slide-in-from-bottom-4 duration-500 self-center">
@@ -30,23 +81,30 @@ export function QuestionnaireCard({
       </h3>
 
       {/* Energy Level */}
-      <div className="mb-10">
+      <div className="relative mb-10">
         <label className="text-[14px] text-[#717182] font-medium block mb-4 font-inter">
           Energy Level
         </label>
-        <div className="flex justify-between items-center px-2 mb-3">
-          <img src="/images-dashboard/Energy%20Level%201.webp" alt="Low" className="w-8 h-8 object-contain" />
-          <img src="/images-dashboard/Energy%20Level%202.webp" alt="Medium" className="w-8 h-8 object-contain" />
-          <img src="/images-dashboard/Energy%20Level%203.webp" alt="High" className="w-8 h-8 object-contain" />
+        <div className="flex justify-between items-center px-2 mb-5">
+          <img
+            src="/images-dashboard/Energy%20Level%201.webp"
+            alt="Low"
+            className="w-8 h-8 object-contain"
+          />
+          <img
+            src="/images-dashboard/Energy%20Level%202.webp"
+            alt="Medium"
+            className="w-8 h-8 object-contain"
+          />
+          <img
+            src="/images-dashboard/Energy%20Level%203.webp"
+            alt="High"
+            className="w-8 h-8 object-contain"
+          />
         </div>
-        <input
-          type="range"
-          min="0" max="100" step="1"
-          value={energyLevel}
-          onChange={(e) => setEnergyLevel(Number(e.target.value))}
-          style={{ background: `linear-gradient(to right, #8A38F5 ${energyLevel}%, #E5E7EB ${energyLevel}%)` }}
-          className="slider-button"
-        />
+
+        {/* Panggil komponen baru di sini */}
+        <SliderWithTooltip value={energyLevel} onChange={setEnergyLevel} />
       </div>
 
       {/* Mood */}
@@ -54,19 +112,26 @@ export function QuestionnaireCard({
         <label className="text-[14px] text-[#717182] font-medium block mb-4 font-inter">
           Mood
         </label>
-        <div className="flex justify-between items-center px-2 mb-3">
-          <img src="/images-dashboard/Happy%20Icon.webp" alt="Happy" className="w-8 h-8 object-contain" />
-          <img src="/images-dashboard/Medium%20Icon.webp" alt="Medium" className="w-8 h-8 object-contain" />
-          <img src="/images-dashboard/Stressed%20Icon.webp" alt="Stressed" className="w-8 h-8 object-contain" />
+        <div className="flex justify-between items-center px-2 mb-5">
+          <img
+            src="/images-dashboard/Happy%20Icon.webp"
+            alt="Happy"
+            className="w-8 h-8 object-contain"
+          />
+          <img
+            src="/images-dashboard/Medium%20Icon.webp"
+            alt="Medium"
+            className="w-8 h-8 object-contain"
+          />
+          <img
+            src="/images-dashboard/Stressed%20Icon.webp"
+            alt="Stressed"
+            className="w-8 h-8 object-contain"
+          />
         </div>
-        <input
-          type="range"
-          min="0" max="100" step="1"
-          value={mood}
-          onChange={(e) => setMood(Number(e.target.value))}
-          style={{ background: `linear-gradient(to right, #8A38F5 ${mood}%, #E5E7EB ${mood}%)` }}
-          className="slider-button"
-        />
+
+        {/* Panggil komponen baru di sini */}
+        <SliderWithTooltip value={mood} onChange={setMood} />
       </div>
 
       {/* Available Time */}
@@ -79,15 +144,37 @@ export function QuestionnaireCard({
           className="w-full border border-[#E5E7EB] rounded-[10px] px-4 py-3.5 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors bg-white"
         >
           <div className="flex items-center gap-3">
-            <svg className="w-[18px] h-[18px] text-[#717182]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-4.5 h-4.5 text-[#717182]"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
-            <span className={`text-[15px] font-inter ${availableTime ? "text-[#0A0A0A]" : "text-[#717182]"}`}>
+            <span
+              className={`text-[15px] font-inter ${availableTime ? "text-[#0A0A0A]" : "text-[#717182]"}`}
+            >
               {availableTime || "Select Time Available"}
             </span>
           </div>
-          <svg className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+          <svg
+            className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${isDropdownOpen ? "rotate-180" : ""}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+              d="M19 9l-7 7-7-7"
+            />
           </svg>
         </div>
 
@@ -112,7 +199,7 @@ export function QuestionnaireCard({
       <button
         onClick={onComplete}
         disabled={!availableTime}
-        className="w-full bg-[#8A38F5] text-white py-4 rounded-[12px] font-semibold text-[15px] font-inter shadow-md hover:bg-[#7b32db] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+        className="w-full bg-[#8A38F5] text-white py-4 rounded-xl font-semibold text-[15px] font-inter shadow-md hover:bg-[#7b32db] disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
       >
         Submit
       </button>

@@ -56,3 +56,12 @@ export interface CreateCalendarPayload {
   startTime?: string;
   status?: string;
 }
+
+export interface RawTasks {
+  category: string;
+  description: string;
+  raw_input: string;
+  raw_time: string;
+  task_id: string;
+  title: string;
+}

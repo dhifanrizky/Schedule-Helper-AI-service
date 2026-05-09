@@ -5,7 +5,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { Message, ScheduleItem } from "@/types";
+import { Message, RawTasks, ScheduleItem } from "@/types";
 import { HitlPayload, PrioritizerTask, ResumeData } from "@/hooks/useChat";
 import { ChatMessage } from "./ChatMessage";
 import { TypingIndicator } from "./TypingIndicator";
@@ -59,8 +59,21 @@ export function ChatState({
 }: ChatStateProps) {
   const [isOpenRawTasks, setIsOpenRawTasks] = useState(false);
 
+  const [rawTasks, setRawTasks] = useState<RawTasks[] | null>(null);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+
+    try {
+      const storedTasks = sessionStorage.getItem("raw_tasks");
+
+      if (storedTasks) {
+        setRawTasks(JSON.parse(storedTasks));
+      }
+    } catch (error) {
+      console.error("Failed to parse raw_tasks:", error);
+      setRawTasks(null);
+    }
   }, [messages, isTyping]);
 
   const isAwaitingApproval =
@@ -104,17 +117,23 @@ export function ChatState({
 
         <div className="flex-1 overflow-y-auto px-6 pt-10 pb-6">
           <div className="max-w-4xl mx-auto flex flex-col gap-8">
-            {messages.map((msg, index) => (
-              <div key={index} className="flex flex-col gap-4">
-                {msg.role !== "system" && <ChatMessage message={msg} />}
-                {msg.role === "system" &&
-                hitlPayload?.type === "counselor_chat" ? (
-                  <ChatMessage message={msg} payload={hitlPayload} />
-                ) : (
-                  msg.role === "system" && <ChatMessage message={msg} />
-                )}
-              </div>
-            ))}
+            {messages.map((msg, index) => {
+              const isLastIndex = index === messages.length - 1;
+
+              return (
+                <div key={index} className="flex flex-col gap-4">
+                  {msg.role !== "system" && <ChatMessage message={msg} />}
+
+                  {msg.role === "system" &&
+                    (!isTyping || !isLastIndex) &&
+                    (hitlPayload?.type === "counselor_chat" && isLastIndex ? (
+                      <ChatMessage message={msg} payload={hitlPayload} />
+                    ) : (
+                      <ChatMessage message={msg} />
+                    ))}
+                </div>
+              );
+            })}
             {hitlPayload?.type === "task_review" && (
               <ResultState
                 scheduleItems={scheduleItems}
@@ -190,9 +209,9 @@ export function ChatState({
 
         {/* Panel Content */}
         <div className="flex-1 overflow-y-auto px-6 py-5 font-mono text-xs">
-          {prioritizerTasks && prioritizerTasks.length > 0 ? (
+          {rawTasks && rawTasks.length > 0 ? (
             <div className="flex flex-col gap-3">
-              {prioritizerTasks.map((task, i) => (
+              {rawTasks.map((task, i) => (
                 <div
                   key={i}
                   className="rounded-lg border border-gray-200 bg-white p-4 flex flex-col gap-2"

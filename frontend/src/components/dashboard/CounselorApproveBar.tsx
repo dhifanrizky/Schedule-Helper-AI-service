@@ -22,7 +22,7 @@ export function CounselorApproveBar({
   };
 
   return (
-    <div className="rounded-3xl border border-[#E5E7EB] p-6 shadow-sm fade-out-20">
+    <div className="flex flex-col rounded-3xl border border-[#E5E7EB] p-6 shadow-sm fade-out-20 max-w-200 w-full self-center">
       <p className="text-[14px] font-semibold text-[#0A0A0A] mb-4">
         Udah pas belum?
       </p>

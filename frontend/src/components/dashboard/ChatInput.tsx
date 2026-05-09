@@ -19,7 +19,7 @@ export function ChatInput({
   counselorBar
 }: ChatInputProps) {
   return (
-    <div className="flex-col gap-4 w-full p-6 shrink-0 flex justify-center">
+    <div className="flex-col gap-4 p-6 shrink-0 flex justify-center">
       {value.length === 0 && counselorBar}
       <form
         onSubmit={onSubmit}
