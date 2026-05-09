@@ -70,8 +70,8 @@ export default function DashboardLayout({
           )}
         </button>
         {isSdbrClose ? (
-          <>
-            <div className="p-6 pb-8 border-b border-gray-100 group-[content]:">
+          <div className="flex flex-col bg-gray-50 h-full">
+            <div className="p-6 pb-8 border-b border-gray-100 group-[content]: ">
               <Link
                 href="/"
                 onClick={() => chatService.clearChat()}
@@ -81,14 +81,16 @@ export default function DashboardLayout({
               </Link>
             </div>
             <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-              <Link
+              <a
                 href="/dashboard"
                 className={`flex items-center gap-3 px-4 py-3.5 rounded-xl font-medium transition-colors cursor-pointer ${
                   isDashboardActive
                     ? "bg-[#8A38F5] text-white shadow-sm"
                     : "text-gray-500 hover:bg-gray-50"
                 }`}
-                onClick={() => removeChatSession()}
+                onClick={() => {
+                  removeChatSession();
+                }}
               >
                 <img
                   src="/images-dashboard/Dashboard.webp"
@@ -96,7 +98,7 @@ export default function DashboardLayout({
                   className={`w-5 h-5 ${isDashboardActive ? "filter brightness-0 invert" : ""}`}
                 />
                 Dashboard
-              </Link>
+              </a>
               <Link
                 href="/dashboard/history"
                 className={`flex items-center gap-3 px-4 py-3.5 rounded-xl font-medium transition-colors cursor-pointer ${
@@ -129,7 +131,7 @@ export default function DashboardLayout({
               </Link>
             </nav>
             {/* User Profile Section */}
-            <div className="p-4 border-t border-gray-100 mt-auto">
+            <div className="p-4 border-t border-gray-100 self-end">
               <div
                 onClick={() => router.push("/dashboard/profile")}
                 className="flex items-center gap-3 p-2 rounded-xl hover:bg-gray-50 cursor-pointer transition-colors"
@@ -164,9 +166,9 @@ export default function DashboardLayout({
                 Logout
               </button>
             </div>
-          </>
+          </div>
         ) : (
-          <>
+          <div className="flex flex-col bg-gray-50 h-full">
             <div className="p-6 pb-8 border-b border-gray-100 group-[content]:">
               <Link
                 href="/"
@@ -177,14 +179,16 @@ export default function DashboardLayout({
               </Link>
             </div>
             <nav className="flex-1 px-2 py-6 space-y-2 overflow-y-auto">
-              <Link
+              <a
                 href="/dashboard"
                 className={`flex items-center justify-center p-3 rounded-xl transition-colors ${
                   isDashboardActive
                     ? "bg-[#8A38F5] shadow-sm"
                     : "hover:bg-gray-50"
                 }`}
-                onClick={() => removeChatSession()}
+                onClick={() => {
+                  removeChatSession();
+                }}
               >
                 <img
                   src="/images-dashboard/Dashboard.webp"
@@ -193,7 +197,7 @@ export default function DashboardLayout({
                     isDashboardActive ? "filter brightness-0 invert" : ""
                   }`}
                 />
-              </Link>
+              </a>
               <Link
                 href="/dashboard/history"
                 className={`flex items-center justify-center p-3 rounded-xl transition-colors ${
@@ -259,7 +263,7 @@ export default function DashboardLayout({
                 />
               </button>
             </div>
-          </>
+          </div>
         )}
       </aside>
 

@@ -41,9 +41,10 @@ export class AgentController {
       const authHeader = req.headers.authorization;
       const cleanPayload: ChatDto = {
         message: body.message,
+        approved_data: body?.approved_data,
         ...(body.thread_id?.trim() ? { thread_id: body.thread_id.trim() } : {}),
       };
-      console.log(cleanPayload, body.approved_data);
+
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
@@ -115,7 +116,9 @@ export class AgentController {
 
             if (eventType === 'execution_complete') {
               status = data.status;
-              aiMessage = data?.hitl_payload?.draft;
+              aiMessage =
+                data?.hitl_payload?.draft || data?.hitl_payload?.message;
+              console.log(`ai message: ${aiMessage}\n`);
             }
           } catch (error) {
             console.error('SSE parse error:', error);
@@ -130,6 +133,8 @@ export class AgentController {
           ...cleanPayload,
           thread_id: sessionThreadId,
         };
+
+        console.log(`payload: ${JSON.stringify(payload)}`);
 
         this.agentService
           .upsertSession(

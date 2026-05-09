@@ -1,4 +1,4 @@
-import { FormEvent } from "react";
+import { ElementType, FormEvent, JSX, ReactNode } from "react";
 
 interface ChatInputProps {
   value: string;
@@ -6,14 +6,24 @@ interface ChatInputProps {
   onSubmit: (e: FormEvent) => void;
   disabled: boolean;
   placeholder?: string;
+  // 1. Change from ElementType to ReactNode (and make it optional if needed)
+  counselorBar?: ReactNode; 
 }
 
-export function ChatInput({ value, onChange, onSubmit, disabled, placeholder }: ChatInputProps) {
+export function ChatInput({
+  value,
+  onChange,
+  onSubmit,
+  disabled,
+  placeholder,
+  counselorBar
+}: ChatInputProps) {
   return (
-    <div className="w-full bg-[#FFFFFF] border-t border-gray-100 p-6 shrink-0 flex justify-center">
+    <div className="flex-col gap-4 w-full p-6 shrink-0 flex justify-center">
+      {value.length === 0 && counselorBar}
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-[800px] bg-[#F9FAFB] border border-[#E5E7EB] rounded-full px-6 py-3 flex items-center gap-4 transition-all focus-within:border-[#8A38F5] focus-within:bg-white focus-within:shadow-md"
+        className="w-full max-w-200 bg-[#F9FAFB] border border-[#E5E7EB] rounded-full px-6 py-3 flex items-center gap-4 transition-all focus-within:border-[#8A38F5] focus-within:bg-white focus-within:shadow-md self-center"
       >
         <input
           type="text"
@@ -31,7 +41,7 @@ export function ChatInput({ value, onChange, onSubmit, disabled, placeholder }: 
           <img
             src="/images-button/Send%20Button.webp"
             alt="Send"
-            className="w-[44px] h-[44px] object-contain"
+            className="w-11 h-11 object-contain"
           />
         </button>
       </form>

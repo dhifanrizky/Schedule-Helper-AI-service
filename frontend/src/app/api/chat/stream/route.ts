@@ -19,7 +19,7 @@ type ResumePayload = {
   user_id: string;
   thread_id: string;
   approved_data:
-    | { approved: boolean; edited_draft: string | null } // Counselor
+    | { approved: boolean; additional_context: string | null } // Counselor
     | { tasks: { task: string; priority: number; deadline: string }[] }; // Prioritizer
 };
 
@@ -37,8 +37,7 @@ function buildBackendPayload(
     typeof body.user_id === "string" && body.user_id
       ? body.user_id
       : "anonymous";
-
-  // ✅ Deteksi resume: ada approved_data dan thread_id
+      
   if (
     body.approved_data !== undefined &&
     typeof body.thread_id === "string" &&
@@ -184,6 +183,12 @@ export async function POST(req: NextRequest) {
           for (const block of blocks) {
             const { eventName, data } = parseEventBlock(block);
 
+            if (eventName === "agent_step") {
+              controller.enqueue(
+                encoder.encode(`\x00AGENT_STEP:${data}\x00`),
+              );
+            }
+
             if (eventName === "execution_complete") {
               controller.enqueue(
                 encoder.encode(`\x00EXECUTION_COMPLETE:${data}\x00`),
@@ -195,8 +200,6 @@ export async function POST(req: NextRequest) {
             if (!threadIdEmitted) {
               const threadId = extractThreadId(data);
               if (threadId) {
-                // Kirim sebagai token khusus yang akan diparsing oleh useChat
-                // Format: \x00THREAD_ID:<id>\x00 (non-printable prefix agar tidak tampil ke user)
                 controller.enqueue(
                   encoder.encode(`\x00THREAD_ID:${threadId}\x00`),
                 );

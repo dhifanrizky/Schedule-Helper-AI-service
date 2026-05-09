@@ -40,7 +40,7 @@ class CounselorApprovedDataDto {
   @IsOptional()
   @IsString()
   @ApiPropertyOptional({ example: 'Revised draft text.' })
-  edited_draft?: string | null;
+  additional_context?: string | null;
 }
 
 class PrioritizerApprovedDataDto {

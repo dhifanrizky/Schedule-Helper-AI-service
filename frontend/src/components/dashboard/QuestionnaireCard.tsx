@@ -24,7 +24,7 @@ export function QuestionnaireCard({
   const timeOptions = ["Less than 2 Hours", "2 - 4 Hours", "4 - 6 Hours", "More than 6 Hours"];
 
   return (
-    <div className="w-full max-w-2xl bg-white border border-[#E5E7EB] rounded-[20px] p-6 shadow-sm mt-4 animate-in fade-in slide-in-from-bottom-4 duration-500 self-center">
+    <div className="w-full max-w-2xl bg-white border border-[#E5E7EB] rounded-[20px] p-6 shadow-sm mt-14 animate-in fade-in slide-in-from-bottom-4 duration-500 self-center">
       <h3 className="text-[18px] font-semibold text-[#0A0A0A] mb-8 font-inter">
         How are you feeling right now?
       </h3>
@@ -92,7 +92,7 @@ export function QuestionnaireCard({
         </div>
 
         {isDropdownOpen && (
-          <div className="absolute top-full left-0 w-full mt-2 bg-white border border-[#E5E7EB] rounded-[10px] shadow-lg z-50 py-2 animate-in fade-in slide-in-from-top-2 max-h-20 overflow-scroll [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div className="absolute top-full left-0 w-full mt-2 bg-white border border-[#E5E7EB] rounded-[10px] shadow-lg z-50 py-2 animate-in fade-in slide-in-from-top-2 max-h-40 overflow-scroll [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {timeOptions.map((option) => (
               <div
                 key={option}

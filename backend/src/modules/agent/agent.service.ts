@@ -61,6 +61,22 @@ export class AgentService {
 
         const messages: Prisma.MessageCreateManyInput[] = [];
 
+        // Pastikan approved_data ada, lalu cek apakah property-nya exist
+        if (
+          chatDto.approved_data &&
+          'additional_context' in chatDto.approved_data
+        ) {
+          // TypeScript sekarang tahu pasti ini punya property additional_context
+          const context =
+            chatDto.approved_data.additional_context ?? 'Udah selesai';
+
+          console.log(`user messages: ${context}`.trim());
+          messages.push({
+            sessionId,
+            role: 'user',
+            content: context,
+          });
+        }
         if (chatDto.message) {
           messages.push({
             sessionId,
