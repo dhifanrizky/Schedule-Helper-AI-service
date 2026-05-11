@@ -1,10 +1,10 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import { useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { authService } from "@/services/authService";
 
-export const dynamic = "force-dynamic";
 
 function CallbackHandler() {
   const router = useRouter();

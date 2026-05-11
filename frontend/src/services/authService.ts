@@ -2,19 +2,23 @@ import { UserProfile } from "@/types";
 import { API_URL } from "@/utils/const";
 
 /**
- * Helper to check if the code is currently running in a browser environment.
- * Next.js executes code on the server during the build process where Web APIs 
- * like sessionStorage and window do not exist.
+ * Helper to safely access Web Storage.
+ * Returns null if not in a browser environment to prevent build errors.
  */
-const isBrowser = typeof window !== "undefined";
+const getSafeStorage = () => {
+  if (typeof window !== "undefined") {
+    return window.sessionStorage;
+  }
+  return null;
+};
 
 export const authService = {
   /**
    * Mengambil data profil user yang sedang login dari Backend.
    */
   async getCurrentUser(): Promise<UserProfile> {
-    // SSR Safe: Check for browser before accessing storage
-    const token = isBrowser ? sessionStorage.getItem("app_token") : null;
+    const storage = getSafeStorage();
+    const token = storage ? storage.getItem("app_token") : null;
     
     if (!token) {
       throw new Error("No token found");
@@ -42,8 +46,8 @@ export const authService = {
       this.saveUserToSession(userData);
       return userData;
     } catch (error) {
-      // Only attempt logout cleanup if in browser
-      if (isBrowser) {
+      // Only attempt logout if we are actually in the browser
+      if (typeof window !== "undefined") {
         this.logout();
       }
       throw error;
@@ -54,14 +58,14 @@ export const authService = {
    * Menangani proses logout.
    */
   async logout(): Promise<void> {
-    if (isBrowser) {
-      sessionStorage.removeItem("app_token");
-      sessionStorage.removeItem("app_user");
-      sessionStorage.removeItem("chat_messages");
+    const storage = getSafeStorage();
+    if (storage) {
+      storage.removeItem("app_token");
+      storage.removeItem("app_user");
+      storage.removeItem("chat_messages");
     }
 
     try {
-      // Using a relative check or guarding the fetch if API_URL is dynamic
       await fetch(`${API_URL}/auth/logout`, { method: "POST" });
     } catch (e) {
       // Abaikan jika API gagal saat logout
@@ -87,8 +91,9 @@ export const authService = {
 
     const data = await response.json();
     if (data.access_token) {
-      if (isBrowser) {
-        sessionStorage.setItem("app_token", data.access_token);
+      const storage = getSafeStorage();
+      if (storage) {
+        storage.setItem("app_token", data.access_token);
       }
       await this.getCurrentUser();
     } else {
@@ -115,8 +120,9 @@ export const authService = {
 
     const data = await response.json();
     if (data.access_token) {
-      if (isBrowser) {
-        sessionStorage.setItem("app_token", data.access_token);
+      const storage = getSafeStorage();
+      if (storage) {
+        storage.setItem("app_token", data.access_token);
         const userData: UserProfile = { name, email };
         this.saveUserToSession(userData);
       }
@@ -138,8 +144,9 @@ export const authService = {
 
     const data = await response.json();
     if (data.access_token) {
-      if (isBrowser) {
-        sessionStorage.setItem("app_token", data.access_token);
+      const storage = getSafeStorage();
+      if (storage) {
+        storage.setItem("app_token", data.access_token);
       }
       await this.getCurrentUser();
     } else {
@@ -151,9 +158,9 @@ export const authService = {
    * Menyimpan data user secara manual ke storage.
    */
   saveUserToSession(user: UserProfile): void {
-    if (isBrowser) {
-      sessionStorage.setItem("app_user", JSON.stringify(user));
-      // Trigger a custom event for other components to react to login state
+    const storage = getSafeStorage();
+    if (storage && typeof window !== "undefined") {
+      storage.setItem("app_user", JSON.stringify(user));
       window.dispatchEvent(new Event("user_updated"));
     }
   },
