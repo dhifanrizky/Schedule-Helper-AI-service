@@ -17,7 +17,11 @@ const CONTROL_TOKEN_PATTERN =
 const LEAKED_EXEC_PATTERN = /EXECUTION_COMPLETE:(\{[\s\S]*?\})/g;
 
 export type HitlPayload =
-  | { type: "counselor_chat"; draft: string; message: string }
+  | {
+      type: "counselor_chat" | "counselor_review";
+      draft: string;
+      message: string;
+    }
   | {
       type: "task_review";
       tasks: PrioritizerTask[];
@@ -202,8 +206,8 @@ export function useChat(userEmail?: string) {
       controlBuffer = "";
 
       combined = combined.replace(CONTROL_TOKEN_PATTERN, (token) => {
-        let replacementText = ""; 
-        
+        let replacementText = "";
+
         if (!threadIdCaptured) {
           const threadMatch = THREAD_ID_PATTERN.exec(token);
           if (threadMatch) {
@@ -235,15 +239,15 @@ export function useChat(userEmail?: string) {
             const stepData = JSON.parse(agentMatch[1]);
             const nodeName = stepData?.update?.node;
 
-            console.log("update data: ", stepData?.update)
-            const tasks : RawTasks[] = stepData.update?.update?.raw_tasks || [];
+            console.log("update data: ", stepData?.update);
+            const tasks: RawTasks[] = stepData.update?.update?.raw_tasks || [];
             if (tasks.length > 0 && nodeName !== "__interrupt__") {
-              console.log('lebih 0');
-              sessionStorage.setItem('raw_tasks', JSON.stringify(tasks));
+              console.log("lebih 0");
+              sessionStorage.setItem("raw_tasks", JSON.stringify(tasks));
             } else if (nodeName === "__interrupt__") {
               // Interrupt biasanya ditimpa oleh HITL, jadi kita biarkan kosong agar tidak double
               replacementText = "";
-            } 
+            }
           } catch (e) {
             console.error("Gagal memparsing JSON Agent Step:", e);
           }
@@ -305,87 +309,92 @@ export function useChat(userEmail?: string) {
   };
 
   const executeChatStream = async (userContent: string, streamPayload: any) => {
-  // 1. Reset UI & Preparation
-  setHitlPayload(null);
-  setInputValue(""); // Bersihkan input (aman dilakukan di kedua kondisi)
-  setIsStarted(true);
-  setIsTyping(true);
+    // 1. Reset UI & Preparation
+    setHitlPayload(null);
+    setInputValue(""); // Bersihkan input (aman dilakukan di kedua kondisi)
+    setIsStarted(true);
+    setIsTyping(true);
 
-  // 2. Update Message State
-  const userMessage = { role: "user" as const, content: userContent };
-  
-  setMessages((prev) => {
-    const nextMessages = [...prev, userMessage];
-    persistMessages(nextMessages); // Simpan pesan user
-    return [...nextMessages, { role: "system" as const, content: "" }];
-  });
+    // 2. Update Message State
+    const userMessage = { role: "user" as const, content: userContent };
 
-  // 3. API Call
-  try {
-    await stream(streamPayload);
-  } catch (err) {
-    console.error("Stream error:", err);
     setMessages((prev) => {
-      const updated = [...prev];
-      const lastIdx = updated.length - 1;
-      if (updated[lastIdx]?.role === "system") {
-        updated[lastIdx] = {
-          role: "system",
-          content: "Maaf, terjadi kesalahan. Silakan coba lagi.",
-        };
-      }
-      persistMessages(updated);
-      return updated;
+      const nextMessages = [...prev, userMessage];
+      persistMessages(nextMessages); // Simpan pesan user
+      return [...nextMessages, { role: "system" as const, content: "" }];
     });
-  } finally {
-    setIsTyping(false);
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }
-};
 
-const handleSend = async (
-  e: FormEvent | null,
-  resumeData?: ResumeData,
-  questionnaireData?: QuestionnairePayload,
-) => {
-  e?.preventDefault();
-  if (isTyping) return;
+    // 3. API Call
+    try {
+      await stream(streamPayload);
+    } catch (err) {
+      console.error("Stream error:", err);
+      setMessages((prev) => {
+        const updated = [...prev];
+        const lastIdx = updated.length - 1;
+        if (updated[lastIdx]?.role === "system") {
+          updated[lastIdx] = {
+            role: "system",
+            content: "Maaf, terjadi kesalahan. Silakan coba lagi.",
+          };
+        }
+        persistMessages(updated);
+        return updated;
+      });
+    } finally {
+      setIsTyping(false);
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  };
 
-  const threadId = searchParams.get("thread_id");
-  const isResume = resumeData !== undefined;
+  const handleSend = async (
+    e: FormEvent | null,
+    resumeData?: ResumeData,
+    questionnaireData?: QuestionnairePayload,
+  ) => {
+    e?.preventDefault();
+    if (isTyping) return;
 
-  // --- LOGIKA RESUME ---
-  if (isResume) {
-    if (!threadId) {
-      console.error("Resume dipanggil tapi thread_id tidak ada");
-      return;
+    const threadId = searchParams.get("thread_id");
+    const isResume = resumeData !== undefined;
+
+    // --- LOGIKA RESUME ---
+    if (isResume) {
+      if (!threadId) {
+        console.error("Resume dipanggil tapi thread_id tidak ada");
+        return;
+      }
+
+      const resumeContent =
+        "approved" in resumeData
+          ? resumeData.additional_context?.trim() ||
+            (resumeData.approved ? "Approved." : "Not approved.")
+          : "Submitted tasks.";
+
+      return executeChatStream(resumeContent, {
+        user_id: userEmail ?? "anonymous",
+        thread_id: threadId,
+        approved_data: resumeData,
+      });
     }
 
-    const resumeContent = "approved" in resumeData
-      ? resumeData.additional_context?.trim() || (resumeData.approved ? "Approved." : "Not approved.")
-      : "Submitted tasks.";
+    // --- LOGIKA CHAT BIASA ---
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
 
-    return executeChatStream(resumeContent, {
+    const userContent = buildUserContent(trimmed, questionnaireData);
+    const nextMessages = [
+      ...messages,
+      { role: "user" as const, content: userContent },
+    ];
+
+    return executeChatStream(userContent, {
+      message: userContent,
+      messages: nextMessages,
       user_id: userEmail ?? "anonymous",
-      thread_id: threadId,
-      approved_data: resumeData,
+      ...(threadId ? { thread_id: threadId } : {}),
     });
-  }
-
-  // --- LOGIKA CHAT BIASA ---
-  const trimmed = inputValue.trim();
-  if (!trimmed) return;
-
-  const userContent = buildUserContent(trimmed, questionnaireData);
-  const nextMessages = [...messages, { role: "user" as const, content: userContent }];
-
-  return executeChatStream(userContent, {
-    message: userContent,
-    messages: nextMessages,
-    user_id: userEmail ?? "anonymous",
-    ...(threadId ? { thread_id: threadId } : {}),
-  });
-};
+  };
 
   return {
     messages,

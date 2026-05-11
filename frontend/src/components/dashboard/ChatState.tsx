@@ -77,9 +77,10 @@ export function ChatState({
   }, [messages, isTyping]);
 
   const isAwaitingApproval =
-    messages.length > 0 &&
-    messages[messages.length - 1].role === "system" &&
-    hitlPayload?.type === "counselor_chat";
+    (messages.length > 0 &&
+      messages[messages.length - 1].role === "system" &&
+      hitlPayload?.type === "counselor_chat") ||
+    "counselor_review";
 
   const handleInputSubmit = (e: FormEvent) => {
     if (isAwaitingApproval) {
@@ -126,7 +127,8 @@ export function ChatState({
 
                   {msg.role === "system" &&
                     (!isTyping || !isLastIndex) &&
-                    (hitlPayload?.type === "counselor_chat" && isLastIndex ? (
+                    (hitlPayload?.type === "counselor_chat" ||
+hitlPayload?.type === "counselor_review" && isLastIndex ? (
                       <ChatMessage message={msg} payload={hitlPayload} />
                     ) : (
                       <ChatMessage message={msg} />
@@ -162,7 +164,7 @@ export function ChatState({
               : "Type your message..."
           }
           counselorBar={
-            hitlPayload?.type === "counselor_chat" && (
+            ( hitlPayload?.type === "counselor_review") && (
               <CounselorApproveBar
                 payload={hitlPayload}
                 onApprove={(editedDraft) =>

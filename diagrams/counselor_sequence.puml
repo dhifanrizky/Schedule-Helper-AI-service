@@ -1,0 +1,270 @@
+@startuml counselor_sequence
+title CounselorAgent — Sequence Diagram
+
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 200
+skinparam sequenceGroupBorderThickness 1.5
+skinparam sequenceGroupFontSize 12
+skinparam noteFontSize 11
+skinparam ArrowFontSize 11
+skinparam ParticipantFontSize 12
+skinparam sequenceLifeLineBorderColor #888
+skinparam sequenceArrowThickness 1.5
+
+skinparam participant {
+    BackgroundColor #F5F5F5
+    BorderColor #999
+    FontColor #222
+}
+skinparam actor {
+    BackgroundColor #DCE8FF
+    BorderColor #5577CC
+}
+skinparam collections {
+    BackgroundColor #FFF8E1
+    BorderColor #E6A800
+}
+skinparam database {
+    BackgroundColor #E8F5E9
+    BorderColor #388E3C
+}
+skinparam control {
+    BackgroundColor #FCE4EC
+    BorderColor #C2185B
+}
+
+' ─── Participants ────────────────────────────────────────────────────────────
+actor       User          as U
+participant Router        as R
+participant "make_counselor\n/ run()" as C
+participant "_phase_init"  as PI
+participant "_phase_detail" as PD
+participant "_phase_review\n/ _do_review" as PR
+collections "LLM\n(discovery_llm\n/ detail_llm\n/ llm)" as LLM
+control     "interrupt_fn\n(HITL)" as HITL
+database    "AppState\n(hitl_input)" as ST
+
+' ═══════════════════════════════════════════════════════════════════════════
+' ENTRY
+' ═══════════════════════════════════════════════════════════════════════════
+== /chat pertama (loop_count = 0) ==
+
+U  -> R  : pesan pertama (raw_tasks vague\natau spesifik)
+R  -> C  : run(state)
+activate C
+
+C  -> ST : get_hitl_input(state) → {} \nget_raw_tasks(state) → raw_tasks\nlast_message(state) → user_msg
+C  -> C  : phase = "init" (prev_hitl kosong)
+C  -> PI : _phase_init(raw_tasks, user_msg, ...)
+activate PI
+
+' ─── CABANG A: VAGUE ──────────────────────────────────────────────────────
+group alt [A] Task vague / kosong
+
+    PI -> PI : _is_vague(raw_tasks) → True
+    PI -> PI : _discovery_msg(user_msg)
+    note right PI : cek _stress(user_msg)\nbuat pesan pembuka
+
+    PI -> HITL : interrupt_fn({type:"counselor_chat",\n  message: discovery_msg,\n  phase:"chat"})
+    HITL --> U : tampilkan pesan discovery
+
+    U -> HITL : {"additional_context": "basdat, RPL, laprak kimia"}
+    HITL --> PI : result (jawaban user)
+
+    ' --- sub-cabang: jawaban kosong ---
+    group alt [A1] Jawaban kosong
+        PI -> PI : _chat_return("", raw_tasks,\n_make_hitl_state(phase="init", ...)
+        PI --> C : return (counselor_done=False)
+        C  --> R : state updated
+        R  --> U : (loop berakhir, tunggu /resume)
+    end
+
+    ' --- sub-cabang: jawaban ada ---
+    group alt [A2] Jawaban ada
+
+        PI -> LLM : _llm_invoke(discovery_llm,\n  DISCOVERY_SYSTEM, answer)
+        LLM --> PI : DiscoveryOutput.tasks
+
+        ' --- sub-sub: parse gagal / kosong ---
+        group alt [A2a] Hasil parse kosong
+            PI -> HITL : interrupt_fn({type:"counselor_chat",\n  message: retry_msg, phase:"chat"})
+            HITL --> U : minta user ulangi
+            U -> HITL  : (jawaban baru)
+            HITL --> PI : result
+            PI -> PI   : _chat_return(retry_msg, raw_tasks,\n_make_hitl_state(phase="init", ...))
+            PI --> C   : return (counselor_done=False)
+        end
+
+        ' --- sub-sub: parse berhasil ---
+        group alt [A2b] Hasil parse berhasil
+            PI -> PI : _init_meta(new_tasks)
+            note right PI : _make_task_dict() per task\nset deadline_confirmed &\ndescription_filled
+            PI -> PI : _chat_return("", _to_tasks(meta),\n_make_hitl_state(phase="detail",\n  current_task_index=0, ...))
+            PI --> C : return (counselor_done=False,\nhitl_input.phase="detail")
+            C  --> R : state updated (counselor_done=False)
+            R  -> C  : run(state) lagi [loop baru]
+        end
+
+    end
+end
+
+' ─── CABANG B: SPESIFIK ───────────────────────────────────────────────────
+group alt [B] Task sudah spesifik
+
+    PI -> PI : _is_vague(raw_tasks) → False
+    PI -> PI : _init_meta(raw_tasks)
+    PI -> PI : _next_incomplete(meta, -1) → idx
+
+    group alt [B1] Semua task sudah lengkap (idx = None)
+        PI -> PI : _chat_return("", _to_tasks(meta),\n_make_hitl_state(phase="review", ...))
+        PI --> C : return → langsung ke phase review
+    end
+
+    group alt [B2] Ada task belum lengkap
+        PI -> PI : _detail_q(meta[idx], is_first=True, user_msg)
+        PI -> HITL : interrupt_fn({type:"counselor_chat",\n  message: detail_q_msg, phase:"chat"})
+        HITL --> U : tampilkan pertanyaan detail task[0]
+
+        U -> HITL  : {"additional_context": "bikin ERD, deadline Jumat"}
+        HITL --> PI : result
+
+        PI -> LLM  : _llm_invoke(detail_llm,\n  DETAIL_PARSE_SYSTEM, answer)
+        LLM --> PI : TaskDetailParsed
+
+        PI -> PI   : _apply_answer(detail_llm, meta, idx, answer)
+        note right PI : update description & raw_time\nset deadline_confirmed=True\ndescription_filled=True
+
+        PI -> PI   : _next_incomplete(meta, idx) → nxt
+
+        group alt [B2a] Masih ada task lagi (nxt != None)
+            PI -> PI  : _chat_return(msg, _to_tasks(meta),\n_make_hitl_state(phase="detail",\n  current_task_index=nxt, ...))
+            PI --> C  : return (counselor_done=False)
+            C  --> R  : state updated
+        end
+
+        group alt [B2b] Semua selesai (nxt = None)
+            PI -> PI  : _chat_return(msg, _to_tasks(meta),\n_make_hitl_state(phase="review", ...))
+            PI --> C  : return → ke phase review
+        end
+    end
+end
+
+deactivate PI
+
+' ═══════════════════════════════════════════════════════════════════════════
+' PHASE DETAIL — /resume (loop berikutnya)
+' ═══════════════════════════════════════════════════════════════════════════
+== /resume → phase = "detail" (loop N) ==
+
+U  -> R  : /resume (user sudah jawab via HITL sebelumnya)
+R  -> C  : run(state)
+C  -> ST : get_hitl_input → {phase:"detail", current_task_index:N, tasks_with_meta:[...]}
+C  -> PD : _phase_detail(raw_tasks, user_msg, prev_hitl, ...)
+activate PD
+
+PD -> PD : meta = prev_hitl["tasks_with_meta"]\ncurrent_idx = prev_hitl["current_task_index"]
+
+group alt [current_idx >= len(meta)]
+    PD -> PD : (index overflow — safety guard)
+    PD -> PD : _chat_return("", _to_tasks(meta),\n_make_hitl_state(phase="review", ...))
+    PD --> C : return → ke review
+end
+
+PD -> PD : _detail_q(meta[current_idx], is_first=False, user_msg)
+PD -> HITL : interrupt_fn({type:"counselor_chat",\n  message: detail_q_msg, phase:"chat"})
+HITL --> U : tampilkan pertanyaan task berikutnya
+
+U -> HITL  : {"additional_context": "..."}
+HITL --> PD : result
+
+PD -> LLM  : _llm_invoke(detail_llm,\n  DETAIL_PARSE_SYSTEM, answer)
+LLM --> PD : TaskDetailParsed
+
+PD -> PD   : _apply_answer(detail_llm, meta, current_idx, answer)
+PD -> PD   : _next_incomplete(meta, current_idx) → nxt
+
+group alt [Masih ada task (nxt != None)]
+    PD -> PD : _chat_return(msg, _to_tasks(meta),\n_make_hitl_state(phase="detail",\n  current_task_index=nxt, ...))
+    PD --> C : return (counselor_done=False)
+    C  --> R : state — router panggil lagi
+end
+
+group alt [Semua task selesai (nxt = None)]
+    PD -> PD : _chat_return("", _to_tasks(meta),\n_make_hitl_state(phase="review",\n  current_task_index=0, ...))
+    PD --> C : return → phase berikutnya = review
+    C  --> R : state updated
+end
+
+deactivate PD
+
+' ═══════════════════════════════════════════════════════════════════════════
+' PHASE REVIEW — /resume (loop review)
+' ═══════════════════════════════════════════════════════════════════════════
+== /resume → phase = "review" ==
+
+R  -> C  : run(state)
+C  -> ST : get_hitl_input → {phase:"review", tasks_with_meta:[...],\n  additional_context:"...", review_count:N}
+C  -> PR : _phase_review(raw_tasks, user_msg, prev_hitl, ...)
+activate PR
+
+PR -> PR : meta = prev_hitl["tasks_with_meta"]\nextra = prev_hitl["additional_context"]
+
+group alt [Ada cerita tambahan (extra != "")]
+
+    PR -> LLM : _llm_invoke(llm, FEEDBACK_SYSTEM,\n  "Task: ...\nCerita: {extra}")
+    LLM --> PR : feedback_msg (1-2 kalimat hangat)
+
+    PR -> LLM : _llm_invoke(enrich_llm,\n  REVIEW_ENRICH_SYSTEM,\n  "Cerita: {extra}\nTask: ...")
+    LLM --> PR : ReviewEnrichOutput.updates
+
+    PR -> PR : update meta (description / raw_time)\n_to_tasks(meta) → tasks
+
+end
+
+note over PR : _do_review(tasks, meta, ...)
+
+group alt [review_count >= MAX_REVIEW]
+    PR -> PR : _force_done(tasks)
+    note right PR : paksa selesai setelah 3 review
+    PR --> C : return (counselor_done=True)
+end
+
+PR -> LLM  : _llm_invoke(llm, REVIEW_SYSTEM,\n  "Pesan user: ...\nTask: ...")
+LLM --> PR : raw → split "|||" → (review_body, offer_msg)
+
+PR -> PR   : gabung: feedback_msg + review_body + offer_msg\n→ full_review
+
+PR -> HITL : interrupt_fn({type:"counselor_review",\n  message: full_review,\n  phase:"review",\n  task_summary:[...]})
+HITL --> U : tampilkan ringkasan + tawaran
+
+U -> HITL  : {"approved": bool, "additional_context": "..."}
+HITL --> PR : result
+
+group alt [approved = True]
+    PR -> PR : buat bridge message\nfull_msg = full_review + bridge
+    PR --> C : return {\n  counselor_done: True,\n  hitl_status: "approved",\n  raw_tasks: tasks\n}
+    C  --> R : state (counselor_done=True)
+    R  --> U : selesai — lanjut ke agent berikutnya
+end
+
+group alt [approved = False]
+    PR -> PR : _chat_return(full_review, tasks,\n_make_hitl_state(phase="review",\n  review_count=N+1,\n  additional_context=extra))
+    PR --> C : return (counselor_done=False)
+    C  --> R : state — router panggil review lagi
+end
+
+deactivate PR
+deactivate C
+
+' ═══════════════════════════════════════════════════════════════════════════
+' GUARD: MAX_LOOPS
+' ═══════════════════════════════════════════════════════════════════════════
+== Guard: loop_count >= MAX_LOOPS ==
+
+R  -> C  : run(state) [loop ke-12+]
+C  -> C  : loop_count >= MAX_LOOPS → _force_done(raw_tasks)
+C  --> R : return (counselor_done=True, hitl_status="approved")
+R  --> U : paksa selesai
+
+@enduml
