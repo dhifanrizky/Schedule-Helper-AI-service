@@ -4,7 +4,7 @@ import { useState, useRef, FormEvent, useCallback, useEffect } from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Message, QuestionnairePayload, RawTasks } from "@/types";
 import { buildUserContent } from "@/utils/chatPayload";
-import { API_URL, APP_TOKEN } from "@/utils/const";
+import { API_URL, getAppToken } from "@/utils/const";
 
 const THREAD_ID_PATTERN = /\x00THREAD_ID:([^\x00]+)\x00/;
 const EXECUTION_COMPLETE_PATTERN = /\x00EXECUTION_COMPLETE:([\s\S]+?)\x00/;
@@ -109,10 +109,15 @@ export function useChat(userEmail?: string) {
     }
 
     const loadThread = async () => {
+      const token = getAppToken();
+      if (!token) {
+        return;
+      }
+
       try {
         const response = await fetch(`${API_URL}/agent/${current}`, {
           headers: {
-            Authorization: `Bearer ${APP_TOKEN}`,
+            Authorization: `Bearer ${token}`,
           },
         });
 

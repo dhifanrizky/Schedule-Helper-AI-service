@@ -9,7 +9,7 @@ import { AnalyzingState } from "@/components/dashboard/AnalyzingState";
 import { ResultState } from "@/components/dashboard/ResultState";
 import { ChatState } from "@/components/dashboard/ChatState";
 import { CreateCalendarPayload } from "@/types";
-import { API_URL, APP_TOKEN } from "@/utils/const";
+import { API_URL, getAppToken } from "@/utils/const";
 
 const formatTimeRange = (startTime: string, durationMinutes: number) => {
   let hours: number | null = null;
@@ -96,6 +96,12 @@ export default function DashboardClient() {
   const handleConfirmPriorities = async () => {
     if (hitlPayload?.type !== "task_review") return;
 
+    const token = getAppToken();
+    if (!token) {
+      console.error("No token found for task review request");
+      return;
+    }
+
     try {
       await Promise.all(
         hitlPayload.tasks.map((task) =>
@@ -103,7 +109,7 @@ export default function DashboardClient() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${APP_TOKEN}`,
+              Authorization: `Bearer ${token}`,
             },
             body: JSON.stringify({
               title: task.title,
