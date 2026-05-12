@@ -145,6 +145,187 @@ Preferred window wajib salah satu:
 - bebas
 """
 
+
+def build_review_reasoning_message(
+    task_breakdown: list[TaskBreakdown],
+    proposed_schedule: list[ScheduleItem],
+) -> str:
+    """
+    Membuat alasan singkat kenapa draft jadwal disusun seperti itu.
+
+    Catatan:
+    - Tidak menambah field baru.
+    - Reasoning dimasukkan ke field "message" yang sudah ada.
+    - Struktur output tetap sama:
+      type, message, tasks, proposed_schedule.
+    """
+    if not proposed_schedule:
+        return (
+            "Cek dulu daftar tugas dan draft jadwal ini. "
+            "Jadwal belum terbentuk karena proposed_schedule masih kosong. "
+            "Kamu bisa approve, edit, tambah, atau hapus sebelum dijadwalkan."
+        )
+
+    task_map = {
+        str(task.get("task_id")): task
+        for task in task_breakdown
+        if isinstance(task, dict)
+    }
+
+    reason_lines: list[str] = []
+
+    for idx, schedule in enumerate(proposed_schedule, start=1):
+        task_id = str(schedule.get("task_id"))
+        task_detail = task_map.get(task_id, {})
+
+        task_title = schedule.get("task") or task_detail.get("title") or f"Tugas {idx}"
+        start_time_raw = schedule.get("start_time")
+        start_time = _format_schedule_time(start_time_raw)
+
+        duration = schedule.get("duration_minutes") or task_detail.get("estimated_minutes") or "-"
+        priority = schedule.get("priority") or task_detail.get("priority") or "-"
+        preferred_window = task_detail.get("preferred_window") or "bebas"
+        deadline = task_detail.get("deadline")
+
+        reason = _build_single_schedule_reason(
+            start_time=start_time_raw,
+            deadline=deadline,
+            preferred_window=preferred_window,
+            index=idx,
+        )
+
+        reason_lines.append(
+            f"{idx}. {task_title} dijadwalkan pada {start_time} "
+            f"karena {reason}. Durasi {duration} menit dan priority {priority}."
+        )
+
+    return (
+        "Cek dulu daftar tugas dan draft jadwal ini.\n\n"
+        "Alasan penjadwalan:\n"
+        + "\n".join(reason_lines)
+        + "\n\nKamu bisa approve, edit, tambah, atau hapus sebelum dijadwalkan."
+    )
+
+
+def _format_schedule_time(value: str | None) -> str:
+    if not value:
+        return "waktu yang tersedia"
+
+    try:
+        dt = datetime.fromisoformat(str(value))
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return str(value)
+
+
+def _build_single_schedule_reason(
+    start_time: str | None,
+    deadline: str | None,
+    preferred_window: str,
+    index: int,
+) -> str:
+    start_dt = None
+    deadline_dt = None
+    deadline_has_time = False
+
+    if start_time:
+        try:
+            start_dt = datetime.fromisoformat(str(start_time))
+        except ValueError:
+            start_dt = None
+
+    if deadline:
+        try:
+            deadline_str = str(deadline)
+
+            # Cek apakah deadline punya jam.
+            # Contoh punya jam: 2026-05-14T09:00:00
+            # Contoh tidak punya jam: 2026-05-14
+            deadline_has_time = "T" in deadline_str and ":" in deadline_str
+
+            deadline_dt = datetime.fromisoformat(deadline_str)
+        except ValueError:
+            deadline_dt = None
+
+    if deadline_dt:
+        is_end_of_day_deadline = (
+            deadline_dt.hour == 23 and deadline_dt.minute >= 55
+        )
+
+        # Kalau deadline hanya tanggal, jangan dianggap jam spesifik.
+        if not deadline_has_time:
+            if index > 1:
+                if preferred_window and preferred_window != "bebas":
+                    return (
+                        f"mengikuti urutan jadwal setelah tugas sebelumnya "
+                        f"dan tetap disesuaikan dengan preferred window {preferred_window}"
+                    )
+
+                return (
+                    "mengikuti urutan jadwal setelah tugas sebelumnya "
+                    "dan slot waktu yang tersedia"
+                )
+
+            if preferred_window and preferred_window != "bebas":
+                return (
+                    f"deadline hanya menunjukkan tanggal, sehingga jadwal "
+                    f"disesuaikan dengan preferred window {preferred_window}"
+                )
+
+            return (
+                "deadline hanya menunjukkan tanggal, sehingga jadwal dipilih "
+                "berdasarkan prioritas dan slot waktu yang tersedia"
+            )
+
+        if is_end_of_day_deadline:
+            if preferred_window and preferred_window != "bebas":
+                return (
+                    f"deadline berada di akhir hari dan jadwal disesuaikan "
+                    f"dengan preferred window {preferred_window}"
+                )
+
+            return (
+                "deadline berada di akhir hari, sehingga jadwal dipilih "
+                "berdasarkan urutan prioritas dan slot waktu yang tersedia"
+            )
+
+        if start_dt:
+            delay_minutes = int((start_dt - deadline_dt).total_seconds() // 60)
+
+            if 0 < delay_minutes <= 30:
+                return (
+                    f"mengikuti urutan jadwal setelah tugas sebelumnya selesai "
+                    f"dan diberi jeda antar tugas sekitar {delay_minutes} menit"
+                )
+
+            if delay_minutes == 0:
+                return (
+                    f"terdapat waktu spesifik/deadline pada "
+                    f"{deadline_dt.strftime('%Y-%m-%d %H:%M')}"
+                )
+
+        return (
+            f"terdapat waktu spesifik/deadline pada "
+            f"{deadline_dt.strftime('%Y-%m-%d %H:%M')}"
+        )
+
+    if index > 1:
+        if preferred_window and preferred_window != "bebas":
+            return (
+                f"mengikuti urutan jadwal setelah tugas sebelumnya dan tetap "
+                f"disesuaikan dengan preferred window {preferred_window}"
+            )
+
+        return (
+            "mengikuti urutan jadwal setelah tugas sebelumnya "
+            "dan slot waktu yang tersedia"
+        )
+
+    if preferred_window and preferred_window != "bebas":
+        return f"sesuai preferred window {preferred_window} dan slot waktu yang tersedia"
+
+    return "mengikuti urutan prioritas dan slot waktu yang tersedia"
+
 def apply_hitl_edits(
     hitl_result: dict,
     task_breakdown: list[TaskBreakdown],
@@ -171,6 +352,7 @@ def apply_hitl_edits(
         final_schedule = edited_schedule or proposed_schedule
 
     return final_tasks, final_schedule
+
 
 def make_prioritizer(llm: BaseChatModel, calendar_client=None):
     structured_llm = llm.with_structured_output(LLMTaskBreakdownResponse)
@@ -214,7 +396,10 @@ def make_prioritizer(llm: BaseChatModel, calendar_client=None):
 
         hitl_result = interrupt({
             "type": "task_review",
-            "message": "Cek dulu daftar tugas dan draft jadwal ini. Kamu bisa approve, edit, tambah, atau hapus sebelum dijadwalkan.",
+            "message": build_review_reasoning_message(
+                task_breakdown=task_breakdown,
+                proposed_schedule=proposed_schedule,
+            ),
             "tasks": task_breakdown,
             "proposed_schedule": proposed_schedule,
         }) or {}
