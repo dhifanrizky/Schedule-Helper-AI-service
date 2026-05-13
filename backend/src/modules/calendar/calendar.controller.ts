@@ -35,6 +35,13 @@ export class CalendarController {
     return this.calendarService.findAll(userId);
   }
 
+  @Get('ready')
+  @ApiOperation({ summary: 'Check if Google Calendar and Tasks are ready' })
+  @ApiResponse({ status: 200, description: 'Return readiness status' })
+  checkReady(@GetUser('id') userId: string) {
+    return this.calendarService.getReadinessStatus(userId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a specific schedule by ID' })
   findOne(@Param('id') id: string, @GetUser('id') userId: string) {

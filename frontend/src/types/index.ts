@@ -36,6 +36,10 @@ export type ScheduleItem = {
   priority: number;
   time: string;
   category: string;
+  subtasks: string[];
+  estimated_minutes: number; 
+  deadline: string; 
+  preferred_window: string; 
 };
 
 // Payload yang dikirim saat user menekan "Generate My Schedule"

@@ -31,13 +31,14 @@ interface ChatStateProps {
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   hitlPayload: HitlPayload | null;
   scheduleItems: ScheduleItem[];
+  // Props di bawah ini bisa Anda hapus juga dari interface parent jika memang sudah tidak dipakai sama sekali di level atas
   setScheduleItems: Dispatch<SetStateAction<ScheduleItem[]>>;
   isEditingSchedule: boolean;
   setIsEditingSchedule: Dispatch<SetStateAction<boolean>>;
   setIsResult: Dispatch<SetStateAction<boolean>>;
   setIsAnalyzing: Dispatch<SetStateAction<boolean>>;
   prioritizerTasks: PrioritizerTask[] | undefined;
-  onApprove: () => {};
+  onApprove: () => void;
 }
 
 export function ChatState({
@@ -49,16 +50,9 @@ export function ChatState({
   messagesEndRef,
   hitlPayload,
   scheduleItems,
-  setScheduleItems,
-  isEditingSchedule,
-  setIsEditingSchedule,
-  setIsResult,
-  setIsAnalyzing,
-  prioritizerTasks,
   onApprove,
 }: ChatStateProps) {
   const [isOpenRawTasks, setIsOpenRawTasks] = useState(false);
-
   const [rawTasks, setRawTasks] = useState<RawTasks[] | null>(null);
 
   useEffect(() => {
@@ -74,13 +68,13 @@ export function ChatState({
       console.error("Failed to parse raw_tasks:", error);
       setRawTasks(null);
     }
-  }, [messages, isTyping]);
+  }, [messages, isTyping, messagesEndRef]);
 
+  // Perbaikan bug logika (sebelumnya || "counselor_review" membuat nilainya selalu true)
   const isAwaitingApproval =
-    (messages.length > 0 &&
-      messages[messages.length - 1].role === "system" &&
-      hitlPayload?.type === "counselor_chat") ||
-    "counselor_review";
+    messages.length > 0 &&
+    messages[messages.length - 1].role === "system" &&
+    (hitlPayload?.type === "counselor_chat" || hitlPayload?.type === "counselor_review");
 
   const handleInputSubmit = (e: FormEvent) => {
     if (isAwaitingApproval) {
@@ -106,14 +100,14 @@ export function ChatState({
             }`}
             onClick={() => setIsOpenRawTasks(!isOpenRawTasks)}
           >
-            <Folder />
+            <Folder size={14} />
             raw_tasks
             <ChevronRight
               size={12}
               className={`transition-transform duration-200 ${isOpenRawTasks ? "rotate-180" : ""}`}
             />
           </button>
-          <div className="absolute left-0 right-0 -bottom-4 h-4 bg-linear-to-b from-white to-transparent pointer-events-none" />
+          <div className="absolute left-0 right-0 -bottom-4 h-4 bg-gradient-to-b from-white to-transparent pointer-events-none" />
         </header>
 
         <div className="flex-1 overflow-y-auto px-6 pt-10 pb-6">
@@ -127,8 +121,9 @@ export function ChatState({
 
                   {msg.role === "system" &&
                     (!isTyping || !isLastIndex) &&
-                    (hitlPayload?.type === "counselor_chat" ||
-hitlPayload?.type === "counselor_review" && isLastIndex ? (
+                    // Perbaikan kurung untuk kondisi
+                    ((hitlPayload?.type === "counselor_chat" ||
+                      (hitlPayload?.type === "counselor_review" && isLastIndex)) ? (
                       <ChatMessage message={msg} payload={hitlPayload} />
                     ) : (
                       <ChatMessage message={msg} />
@@ -136,18 +131,16 @@ hitlPayload?.type === "counselor_review" && isLastIndex ? (
                 </div>
               );
             })}
+            
             {hitlPayload?.type === "task_review" && (
               <ResultState
                 scheduleItems={scheduleItems}
-                setScheduleItems={setScheduleItems}
-                isEditingSchedule={isEditingSchedule}
-                setIsEditingSchedule={setIsEditingSchedule}
-                setIsResult={setIsResult}
-                setIsAnalyzing={setIsAnalyzing}
-                prioritizerTasks={hitlPayload.tasks}
                 onApprove={onApprove}
+                // Jika di parent ada fungsi onEditSchedule atau onEditTask, Anda bisa melemparnya ke sini
+                // onEditSchedule={handleEditSchedule}
               />
             )}
+            
             {isTyping && <TypingIndicator />}
             <div ref={messagesEndRef} />
           </div>
@@ -164,7 +157,7 @@ hitlPayload?.type === "counselor_review" && isLastIndex ? (
               : "Type your message..."
           }
           counselorBar={
-            ( hitlPayload?.type === "counselor_review") && (
+            hitlPayload?.type === "counselor_review" && (
               <CounselorApproveBar
                 payload={hitlPayload}
                 onApprove={(editedDraft) =>
@@ -230,7 +223,7 @@ hitlPayload?.type === "counselor_review" && isLastIndex ? (
                       <span className="text-[10px] text-gray-400 uppercase tracking-wider">
                         {key}
                       </span>
-                      <span className="text-gray-800 wrap-break-word">
+                      <span className="text-gray-800 break-words">
                         {typeof value === "object"
                           ? JSON.stringify(value, null, 2)
                           : String(value)}

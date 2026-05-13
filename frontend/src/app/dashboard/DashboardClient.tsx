@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useUser } from "@/hooks/useUser";
 import { useChat } from "@/hooks/useChat";
 import { useSchedule } from "@/hooks/useSchedule";
 import { StartState } from "@/components/dashboard/StartState";
 import { AnalyzingState } from "@/components/dashboard/AnalyzingState";
-import { ResultState } from "@/components/dashboard/ResultState";
 import { ChatState } from "@/components/dashboard/ChatState";
 import { CreateCalendarPayload } from "@/types";
 import { API_URL, getAppToken } from "@/utils/const";
@@ -48,7 +47,8 @@ const formatTimeRange = (startTime: string, durationMinutes: number) => {
 
 export default function DashboardClient() {
   const { user, isUserLoading, userInitial } = useUser();
-
+  const [energyLevel, setEnergyLevel] = useState<number>(50);
+  const [mood, setMood] = useState<number>(50);
   const {
     messages,
     inputValue,
@@ -61,10 +61,6 @@ export default function DashboardClient() {
   } = useChat(user?.email);
 
   const {
-    energyLevel,
-    setEnergyLevel,
-    mood,
-    setMood,
     availableTime,
     setAvailableTime,
     isDropdownOpen,
@@ -80,18 +76,35 @@ export default function DashboardClient() {
 
   useEffect(() => {
     if (hitlPayload?.type !== "task_review") return;
-    if (!hitlPayload.proposed_schedule?.length) return;
-
-    const mappedScheduleItems = hitlPayload.proposed_schedule.map((item) => ({
-      time: formatTimeRange(item.start_time, item.duration_minutes),
-      title: item.task,
-      task_id: item.task_id,
-      priority: item.priority,
-      category: item.category,
-    }));
+    if (!hitlPayload.tasks?.length) return;
+    console.log(
+      "hitlPayload proposed_schedule: ",
+      hitlPayload.tasks,
+    );
+    const mappedScheduleItems = hitlPayload.tasks.map(
+      (item: any) => ({
+        time:
+          item.time ||
+          (item.start_time
+            ? formatTimeRange(item.start_time, item.duration_minutes)
+            : "Belum dijadwalkan"),
+        title: item.task,
+        task_id: item.task_id,
+        priority: item.priority,
+        category: item.category,
+        subtasks: item.subtasks || [],
+        estimated_minutes: item.duration_minutes,
+        deadline: item.deadline,
+        preferred_window: item.preferred_window,
+      }),
+    );
 
     setScheduleItems(mappedScheduleItems);
   }, [hitlPayload, setScheduleItems]);
+
+  useEffect(() => {
+    console.log("Schedulet Items : ", scheduleItems);
+  }, [scheduleItems]);
 
   const handleConfirmPriorities = async () => {
     if (hitlPayload?.type !== "task_review") return;

@@ -393,11 +393,14 @@ def _parse_iso_datetime(value: str, timezone_name: str = DEFAULT_TIMEZONE) -> da
     except ValueError as err:
         raise ValueError(f"ISO format invalid: {value}") from err
 
+    # PERBAIKAN: Selalu gunakan offset-aware datetime!
+    # NestJS API & class-validator butuh format waktu beserta offsetnya (misal +07:00).
+    # Jika kita kirim naive datetime, backend bisa mengira ini adalah waktu UTC.
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=_get_tzinfo(timezone_name))
+        tz = _get_tzinfo(timezone_name)
+        dt = dt.replace(tzinfo=tz)
 
     return dt
-
 
 def _get_tzinfo(timezone_name: str):
     try:

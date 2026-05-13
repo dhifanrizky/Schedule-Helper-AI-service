@@ -36,6 +36,7 @@ export type ProposedSchedule = {
   start_time: string;
   duration_minutes: number;
   category: string;
+  subtasks: string[];
 };
 
 export type PrioritizerTask = {

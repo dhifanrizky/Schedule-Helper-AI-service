@@ -4,9 +4,6 @@ import { CreateCalendarDto, UpdateCalendarDto } from './dto/calendar.dto.js';
 import { google } from 'googleapis';
 import { ConfigService } from '@nestjs/config';
 
-/* eslint-disable
-  @typescript-eslint/no-unsafe-assignment
-*/
 @Injectable()
 export class CalendarService {
   constructor(
@@ -59,6 +56,38 @@ export class CalendarService {
     if (priority === 1) return '11'; // Tomato - merah
     if (priority === 2) return '5'; // Banana - kuning
     return '2'; // Sage - hijau
+  }
+
+  async getReadinessStatus(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        googleAccessToken: true,
+        googleRefreshToken: true,
+      },
+    });
+
+    const googleClientConfigured = Boolean(
+      this.config.get<string>('GOOGLE_CLIENT_ID') &&
+      this.config.get<string>('GOOGLE_CLIENT_SECRET') &&
+      this.config.get<string>('GOOGLE_CALLBACK_URL'),
+    );
+
+    const googleCalendarReady = Boolean(
+      user?.googleAccessToken && googleClientConfigured,
+    );
+
+    const googleTasksReady = Boolean(
+      user?.googleAccessToken &&
+      user?.googleRefreshToken &&
+      googleClientConfigured,
+    );
+
+    return {
+      googleCalendarReady,
+      googleTasksReady,
+      ready: googleCalendarReady && googleTasksReady,
+    };
   }
 
   async findAll(userId: string) {

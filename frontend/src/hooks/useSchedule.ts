@@ -7,9 +7,6 @@ import { defaultScheduleItems } from "@/data/mockData";
  * Hook untuk mengelola state kuesioner dan hasil pembuatan jadwal.
  */
 export function useSchedule() {
-  // Questionnaire States
-  const [energyLevel, setEnergyLevel] = useState<number>(50);
-  const [mood, setMood] = useState<number>(50);
   const [availableTime, setAvailableTime] = useState<string>("");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -21,28 +18,25 @@ export function useSchedule() {
   // Data States
   const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>(defaultScheduleItems);
 
-  const handleGenerateSchedule = async () => {
-    setIsAnalyzing(true);
+  // const handleGenerateSchedule = async () => {
+  //   setIsAnalyzing(true);
     
-    try {
-      const payload: QuestionnairePayload = { energyLevel, mood, availableTime };
-      const result = await scheduleService.generateSchedule(payload);
+  //   try {
+  //     const payload: QuestionnairePayload = { availableTime };
+  //     const result = await scheduleService.generateSchedule(payload);
       
-      // === INTEGRASI BE: Update state dengan data nyata dari response ===
-      // setScheduleItems(result.timeline);
+  //     // === INTEGRASI BE: Update state dengan data nyata dari response ===
+  //     // setScheduleItems(result.timeline);
       
-      setIsAnalyzing(false);
-      setIsResult(true);
-    } catch (error) {
-      console.error("Failed to generate schedule:", error);
-      setIsAnalyzing(false);
-    }
-  };
+  //     setIsAnalyzing(false);
+  //     setIsResult(true);
+  //   } catch (error) {
+  //     console.error("Failed to generate schedule:", error);
+  //     setIsAnalyzing(false);
+  //   }
+  // };
 
   return {
-    // Questionnaire
-    energyLevel, setEnergyLevel,
-    mood, setMood,
     availableTime, setAvailableTime,
     isDropdownOpen, setIsDropdownOpen,
     
@@ -55,6 +49,6 @@ export function useSchedule() {
     scheduleItems, setScheduleItems,
     
     // Logic
-    handleGenerateSchedule
+    // handleGenerateSchedule
   };
 }

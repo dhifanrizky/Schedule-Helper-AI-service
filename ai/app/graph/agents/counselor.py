@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from uuid import uuid4
 from typing import Optional
@@ -214,86 +214,28 @@ REVIEW_ENRICH_SYSTEM = """Update deskripsi task dari cerita tambahan user.
 Gabungkan info lama dengan info baru. Jangan hapus deskripsi lama yang valid.
 Hanya update task yang relevan dengan cerita user."""
 
+# Tambahan Prompt untuk Chat Dinamis
+DISCOVERY_CHAT_SYSTEM = """Kamu adalah teman yang hangat dan supportif.
+User sedang merasa pusing/overwhelmed/stress karena kewajiban yang menumpuk, TAPI mereka belum menyebutkan secara spesifik apa saja kegiatannya.
 
-# ── Generic Utils ─────────────────────────────────────────────────────────────
+TUGAS UTAMA (HARUS DIIKUTI):
+1. Validasi perasaannya dengan empati (jangan menggurui).
+2. PANCING/MINTA user untuk me-list atau menyebutkan apa saja kegiatan/tugas yang bikin numpuk itu.
+3. Berikan contoh ringan di dalam tanda kurung untuk memancingnya (contoh: '(misal: tugas RPL, laprak kimia, atau meeting kepanitiaan)').
+4. Gunakan bahasa/tone yang PERSIS senada dengan ucapan user (kalau user bilang 'males banget' atau gaul, balas dengan santai/gaul juga).
 
-def _coerce(task) -> dict:
-    """Konversi task (Pydantic model atau dict) ke dict biasa."""
-    if hasattr(task, "model_dump"):
-        return task.model_dump()
-    return dict(task) if isinstance(task, dict) else {}
+Batas: Maksimal 3 kalimat."""
 
+DETAIL_CHAT_SYSTEM = """Kamu adalah teman yang hangat dan supportif.
+Kita sedang membantu user mengurai tugas-tugasnya satu per satu dari daftarnya.
 
-def _get(task, field: str):
-    """Ambil field dari task tanpa peduli tipenya (model atau dict)."""
-    if hasattr(task, field):
-        return getattr(task, field)
-    if isinstance(task, dict):
-        return task.get(field)
-    return None
+TUGAS UTAMA (HARUS DIIKUTI):
+1. Acknowledge/sebutkan nama tugas yang sedang ditanyakan ke user saat ini.
+2. Tanyakan 2 hal ini kepada user: ini ngerjain apa sebenarnya? dan kapan target selesainya/deadlinenya?
+3. Jika ini adalah tugas pertama yang dibahas (is_first=True), tambahkan kalimat penenang singkat di awal sebelum bertanya.
+4. Gunakan bahasa/tone yang PERSIS senada dengan ucapan user.
 
-
-# ── Task Dict Factory ─────────────────────────────────────────────────────────
-
-def _make_task_dict(
-    title: str,
-    description: str = "",
-    raw_time: str | None = None,
-    raw_input: str = "",
-    category: str = "biasa",
-    task_id: str | None = None,
-    deadline_confirmed: bool = False,
-    description_filled: bool = False,
-) -> dict:
-    """
-    Satu-satunya tempat schema task dict dibuat.
-    Dipakai oleh _parse_discovery, _init_meta, dan _to_tasks.
-    """
-    return {
-        "task_id":            task_id or str(uuid4()),
-        "title":              title,
-        "description":        description,
-        "raw_time":           raw_time,
-        "raw_input":          raw_input,
-        "category":           category,
-        "deadline_confirmed": deadline_confirmed,
-        "description_filled": description_filled,
-    }
-
-
-# ── HITL State Builder ────────────────────────────────────────────────────────
-
-def _make_hitl_state(
-    phase: str,
-    meta: list[dict],
-    current_task_index: int = 0,
-    review_count: int = 0,
-    additional_context: str = "",
-) -> dict:
-    """
-    Satu-satunya tempat hitl_state dict dibentuk.
-    Menghilangkan literal dict yang berulang di setiap _chat_return call.
-    """
-    return {
-        "phase":              phase,
-        "current_task_index": current_task_index,
-        "tasks_with_meta":    meta,
-        "review_count":       review_count,
-        "additional_context": additional_context,
-    }
-
-
-# ── LLM Invoke Helper ─────────────────────────────────────────────────────────
-
-def _llm_invoke(llm, system: str, user: str):
-    """
-    Wrapper invoke [system, user] yang diulang di 5+ tempat.
-    Mengembalikan objek hasil llm.invoke langsung.
-    """
-    return llm.invoke([
-        {"role": "system", "content": system},
-        {"role": "user",   "content": user},
-    ])
+Batas: Maksimal 3 kalimat."""
 
 
 # ── Factory ───────────────────────────────────────────────────────────────────
@@ -302,15 +244,12 @@ def make_counselor(llm, _interrupt=None, calendar_client=None):
     interrupt_fn  = _interrupt if _interrupt is not None else _langgraph_interrupt
     discovery_llm = llm.with_structured_output(DiscoveryOutput)
     detail_llm    = llm.with_structured_output(TaskDetailParsed)
-    enrich_llm    = llm.with_structured_output(ReviewEnrichOutput)  # Fix #2: buat sekali, bukan per-call
 
     def run(state: AppState) -> dict:
         raw_tasks  = get_raw_tasks(state)
         prev_hitl  = get_hitl_input(state) or {}
         user_msg   = last_message(state)
-        # Fix #7: hitung loop hanya dari pesan non-kosong agar transisi antar fase
-        # yang return msg="" tidak menghabiskan kuota MAX_LOOPS secara diam-diam.
-        loop_count = sum(1 for m in (state.get("counselor_response") or []) if m)
+        loop_count = len(state.get("counselor_response") or [])
 
         _log("=== RUN ===", f"loop={loop_count} phase={prev_hitl.get('phase','init')}")
 
@@ -321,14 +260,14 @@ def make_counselor(llm, _interrupt=None, calendar_client=None):
 
         if phase == "init":
             return _phase_init(raw_tasks, user_msg, prev_hitl,
-                               discovery_llm, detail_llm,
-                               interrupt_fn)
+                               discovery_llm, detail_llm, llm,
+                               interrupt_fn, loop_count)
         elif phase == "detail":
             return _phase_detail(raw_tasks, user_msg, prev_hitl,
-                                 detail_llm, interrupt_fn)  # Fix #8: hapus llm yg tidak dipakai
+                                 detail_llm, llm, interrupt_fn, loop_count)
         elif phase == "review":
             return _phase_review(raw_tasks, user_msg, prev_hitl,
-                                 llm, enrich_llm, interrupt_fn)
+                                 llm, interrupt_fn, loop_count)
         else:
             return _force_done(raw_tasks)
 
@@ -338,8 +277,8 @@ def make_counselor(llm, _interrupt=None, calendar_client=None):
 # ── Phase: Init ───────────────────────────────────────────────────────────────
 
 def _phase_init(raw_tasks, user_msg, prev_hitl,
-                discovery_llm, detail_llm,
-                interrupt_fn):
+                discovery_llm, detail_llm, llm,
+                interrupt_fn, loop_count):
     """
     Loop pertama. Satu interrupt saja.
     Kalau vague: tanya discovery.
@@ -348,7 +287,8 @@ def _phase_init(raw_tasks, user_msg, prev_hitl,
     _log("PHASE init")
 
     if _is_vague(raw_tasks):
-        msg    = _discovery_msg(user_msg)
+        # Tanya task apa aja dulu secara dinamis dengan LLM
+        msg = _discovery_msg(llm, user_msg)
         _log("INTERRUPT discovery", msg)
         result = interrupt_fn({"type": "counselor_chat", "message": msg, "phase": "chat"}) or {}
 
@@ -356,9 +296,12 @@ def _phase_init(raw_tasks, user_msg, prev_hitl,
         _log("DISCOVERY ANSWER", answer)
 
         if not answer:
-            return _chat_return(msg, raw_tasks, _make_hitl_state(
-                phase="init", meta=[], current_task_index=0, review_count=0,
-            ))
+            return _chat_return(msg, raw_tasks, {
+                "phase": "init",
+                "current_task_index": 0,
+                "tasks_with_meta": [],
+                "review_count": 0,
+            })
 
         new_tasks = _parse_discovery(discovery_llm, answer)
         _log("PARSED TASKS", new_tasks)
@@ -369,30 +312,40 @@ def _phase_init(raw_tasks, user_msg, prev_hitl,
                 "Bisa sebutin lebih jelas? "
                 "Contoh: 'ada tugas RPL bikin aplikasi, sama laprak kimia deadline Jumat'"
             )
-            # Fix #1: return value interrupt sengaja tidak ditangkap di sini karena
-            # jawaban user dari retry akan tiba via run() berikutnya (bukan via nilai
-            # kembalian interrupt ini). hitl_state phase="init" memastikan run()
-            # berikutnya memproses jawaban dari awal, bukan dari state yang stale.
             interrupt_fn({"type": "counselor_chat", "message": retry, "phase": "chat"})
-            return _chat_return(retry, raw_tasks, _make_hitl_state(
-                phase="init", meta=[], current_task_index=0, review_count=0,
-            ))
+            return _chat_return(retry, raw_tasks, {
+                "phase": "init",
+                "current_task_index": 0,
+                "tasks_with_meta": [],
+                "review_count": 0,
+            })
 
         meta = _init_meta(new_tasks)
-        return _chat_return("", _to_tasks(meta), _make_hitl_state(
-            phase="detail", meta=meta, current_task_index=0, review_count=0,
-        ))
+        # Return tanpa interrupt kedua — loop berikutnya tanya detail
+        return _chat_return("", _to_tasks(meta), {
+            "phase": "detail",
+            "current_task_index": 0,
+            "tasks_with_meta": meta,
+            "review_count": 0,
+            "additional_context": "",
+        })
 
     else:
-        meta = _init_meta(raw_tasks)
-        idx  = _next_incomplete(meta, -1)
+        # Task sudah spesifik — langsung tanya detail task[0]
+        meta    = _init_meta(raw_tasks)
+        idx     = _next_incomplete(meta, -1)
 
         if idx is None:
-            return _chat_return("", _to_tasks(meta), _make_hitl_state(
-                phase="review", meta=meta, current_task_index=0, review_count=0,
-            ))
+            # Sudah lengkap semua dari router
+            return _chat_return("", _to_tasks(meta), {
+                "phase": "review",
+                "current_task_index": 0,
+                "tasks_with_meta": meta,
+                "review_count": 0,
+            })
 
-        msg    = _detail_q(meta[idx], is_first=True, user_msg=user_msg)
+        # Tanya secara dinamis
+        msg = _detail_q(llm, meta[idx], is_first=True, user_msg=user_msg)
         _log("INTERRUPT detail[0]", msg)
         result = interrupt_fn({"type": "counselor_chat", "message": msg, "phase": "chat"}) or {}
 
@@ -401,34 +354,45 @@ def _phase_init(raw_tasks, user_msg, prev_hitl,
         nxt    = _next_incomplete(meta, idx)
 
         if nxt is None:
-            return _chat_return(msg, _to_tasks(meta), _make_hitl_state(
-                phase="review", meta=meta, current_task_index=0, review_count=0,
-            ))
+            return _chat_return(msg, _to_tasks(meta), {
+                "phase": "review",
+                "current_task_index": 0,
+                "tasks_with_meta": meta,
+                "review_count": 0,
+            })
 
-        return _chat_return(msg, _to_tasks(meta), _make_hitl_state(
-            phase="detail", meta=meta, current_task_index=nxt, review_count=0,
-        ))
+        return _chat_return(msg, _to_tasks(meta), {
+            "phase": "detail",
+            "current_task_index": nxt,
+            "tasks_with_meta": meta,
+            "review_count": 0,
+            "additional_context": "",
+        })
 
 
 # ── Phase: Detail ─────────────────────────────────────────────────────────────
 
 def _phase_detail(raw_tasks, user_msg, prev_hitl,
-                  detail_llm, interrupt_fn):
+                  detail_llm, llm, interrupt_fn, loop_count):
     """
     Tanya satu task per loop. Satu interrupt per run.
     """
     _log("PHASE detail")
 
-    meta         = prev_hitl.get("tasks_with_meta") or _init_meta(raw_tasks)
-    current_idx  = prev_hitl.get("current_task_index", 0)
-    review_count = prev_hitl.get("review_count", 0)
+    meta          = prev_hitl.get("tasks_with_meta") or _init_meta(raw_tasks)
+    current_idx   = prev_hitl.get("current_task_index", 0)
+    review_count  = prev_hitl.get("review_count", 0)
 
     if current_idx >= len(meta):
-        return _chat_return("", _to_tasks(meta), _make_hitl_state(
-            phase="review", meta=meta, current_task_index=0, review_count=review_count,
-        ))
+        return _chat_return("", _to_tasks(meta), {
+            "phase": "review",
+            "current_task_index": 0,
+            "tasks_with_meta": meta,
+            "review_count": review_count,
+        })
 
-    msg    = _detail_q(meta[current_idx], is_first=False, user_msg=user_msg)
+    # Tanya dinamis menggunakan LLM
+    msg = _detail_q(llm, meta[current_idx], is_first=False, user_msg=user_msg)
     _log(f"INTERRUPT detail[{current_idx}]", msg)
     result = interrupt_fn({"type": "counselor_chat", "message": msg, "phase": "chat"}) or {}
 
@@ -442,43 +406,59 @@ def _phase_detail(raw_tasks, user_msg, prev_hitl,
     _log("NEXT IDX", nxt)
 
     if nxt is None:
+        # ALL COMPLETE — jangan interrupt di sini.
+        # Return ke routing dulu dengan phase="review".
+        # Loop berikutnya (_phase_review) yang akan generate review + interrupt.
         _log("ALL COMPLETE -> switching to review phase")
-        return _chat_return("", _to_tasks(meta), _make_hitl_state(
-            phase="review", meta=meta, current_task_index=0, review_count=review_count,
-        ))
+        return _chat_return("", _to_tasks(meta), {
+            "phase": "review",
+            "current_task_index": 0,
+            "tasks_with_meta": meta,
+            "review_count": review_count,
+            "additional_context": "",
+        })
 
-    return _chat_return(msg, _to_tasks(meta), _make_hitl_state(
-        phase="detail", meta=meta, current_task_index=nxt, review_count=review_count,
-    ))
+    return _chat_return(msg, _to_tasks(meta), {
+        "phase": "detail",
+        "current_task_index": nxt,
+        "tasks_with_meta": meta,
+        "review_count": review_count,
+        "additional_context": "",
+    })
 
 
 # ── Phase: Review ─────────────────────────────────────────────────────────────
 
 def _phase_review(raw_tasks, user_msg, prev_hitl,
-                  llm, enrich_llm, interrupt_fn):
+                  llm, interrupt_fn, loop_count):
     """
     Generate review, interrupt, tunggu approve atau cerita tambahan.
     """
     _log("PHASE review")
 
-    meta         = prev_hitl.get("tasks_with_meta") or _init_meta(raw_tasks)
-    review_count = prev_hitl.get("review_count", 0)
-    extra        = (prev_hitl.get("additional_context") or "").strip()
-    tasks        = _to_tasks(meta)
+    meta          = prev_hitl.get("tasks_with_meta") or _init_meta(raw_tasks)
+    review_count  = prev_hitl.get("review_count", 0)
+    extra         = (prev_hitl.get("additional_context") or "").strip()
+    tasks         = _to_tasks(meta)
 
+    # Kalau ada cerita tambahan: generate feedback + enrich task
     feedback_msg = ""
     if extra:
+        # 1. Generate feedback hangat dulu (1 LLM call)
         feedback_msg = _gen_feedback(llm, extra, tasks)
         _log("FEEDBACK MSG", feedback_msg)
 
+        # 2. Enrich task dari cerita user
         try:
-            # Fix #2: enrich_llm diterima sebagai parameter (dibuat sekali di make_counselor)
+            enrich_llm   = llm.with_structured_output(ReviewEnrichOutput)
             task_context = "\n".join(
                 f"- task_id={t['task_id']} | {t['title']}: {t.get('description') or '(kosong)'}"
                 for t in meta
             )
-            res      = _llm_invoke(enrich_llm, REVIEW_ENRICH_SYSTEM,
-                                   f"Cerita: {extra}\n\nTask:\n{task_context}")
+            res      = enrich_llm.invoke([
+                {"role": "system", "content": REVIEW_ENRICH_SYSTEM},
+                {"role": "user",   "content": f"Cerita: {extra}\n\nTask:\n{task_context}"},
+            ])
             task_map = {t["task_id"]: dict(t) for t in meta}
             for u in res.updates:
                 if u.task_id in task_map:
@@ -492,11 +472,11 @@ def _phase_review(raw_tasks, user_msg, prev_hitl,
         except Exception as e:
             _log("ENRICH ERROR", e)
 
-    return _do_review(tasks, meta, user_msg, llm, interrupt_fn, review_count,
+    return _do_review(tasks, meta, user_msg, llm, interrupt_fn, loop_count, review_count,
                       feedback_msg=feedback_msg)
 
 
-def _do_review(tasks, meta, user_msg, llm, interrupt_fn, review_count,
+def _do_review(tasks, meta, user_msg, llm, interrupt_fn, loop_count, review_count,
                feedback_msg: str = ""):
     """
     Generate review + offer, interrupt, tunggu approve atau cerita tambahan.
@@ -507,14 +487,17 @@ def _do_review(tasks, meta, user_msg, llm, interrupt_fn, review_count,
     if review_count >= MAX_REVIEW:
         return _force_done(tasks)
 
+    # Generate review body + tawaran curhat kontekstual dalam 1 LLM call
     review_body, offer_msg = _gen_review(llm, tasks, user_msg)
     _log("REVIEW BODY", review_body)
     _log("OFFER MSG", offer_msg)
 
-    full_review = (
-        f"{feedback_msg}\n\n{review_body}\n\n{offer_msg}" if feedback_msg
-        else f"{review_body}\n\n{offer_msg}"
-    )
+    # Gabungkan: feedback (kalau ada) + review + tawaran
+    if feedback_msg:
+        full_review = f"{feedback_msg}\n\n{review_body}\n\n{offer_msg}"
+    else:
+        full_review = f"{review_body}\n\n{offer_msg}"
+
     _log("FULL REVIEW MSG", full_review)
 
     task_summary = [
@@ -547,43 +530,44 @@ def _do_review(tasks, meta, user_msg, llm, interrupt_fn, review_count,
             "hitl_input":         None,
         }
 
-    return _chat_return(full_review, tasks, _make_hitl_state(
-        phase="review", meta=meta, current_task_index=0,
-        review_count=review_count + 1, additional_context=extra,
-    ))
+    return _chat_return(full_review, tasks, {
+        "phase":              "review",
+        "current_task_index": 0,
+        "tasks_with_meta":    meta,
+        "review_count":       review_count + 1,
+        "additional_context": extra,
+    })
 
 
 # ── Task Parsing ──────────────────────────────────────────────────────────────
 
 def _parse_discovery(discovery_llm, user_answer: str) -> list[dict]:
     try:
-        result = _llm_invoke(
-            discovery_llm,
-            DISCOVERY_SYSTEM,
-            f"User menyebutkan: {user_answer}",
-        )
-        return [
-            _make_task_dict(
-                title=t.title,
-                raw_time=t.raw_time,
-                raw_input=t.raw_input or user_answer,
-                category=t.category,
-            )
-            for t in result.tasks
-        ]
+        result = discovery_llm.invoke([
+            {"role": "system", "content": DISCOVERY_SYSTEM},
+            {"role": "user",   "content": f"User menyebutkan: {user_answer}"},
+        ])
+        tasks = []
+        for t in result.tasks:
+            tasks.append({
+                "task_id":    str(uuid4()),
+                "title":      t.title,
+                "description": "",
+                "raw_time":   t.raw_time,
+                "raw_input":  t.raw_input or user_answer,
+                "category":   t.category,
+            })
+        return tasks
     except Exception as e:
         _log("PARSE DISCOVERY ERROR", e)
         return []
 
 
-def _apply_answer(detail_llm: TaskDetailParsed, meta: list, idx: int, answer: str) -> list:
+def _apply_answer(detail_llm, meta: list, idx: int, answer: str) -> list:
     """
     Parse jawaban user untuk task[idx] dan update meta.
     Deterministik: kalau LLM gagal, simpan jawaban mentah.
     Selalu set deadline_confirmed=True setelah dipanggil.
-
-    PENTING: detail_llm harus llm.with_structured_output(TaskDetailParsed),
-             bukan llm mentah — structured output dibutuhkan untuk parsing field.
     """
     if idx >= len(meta):
         return meta
@@ -592,21 +576,20 @@ def _apply_answer(detail_llm: TaskDetailParsed, meta: list, idx: int, answer: st
     target = result[idx]
 
     if not answer:
-        target["deadline_confirmed"] = True
-        target["description_filled"] = True
+        target["deadline_confirmed"]  = True
+        target["description_filled"]  = True
         result[idx] = target
         return result
 
     try:
-        parsed = _llm_invoke(
-            detail_llm,
-            DETAIL_PARSE_SYSTEM,
-            (
+        parsed = detail_llm.invoke([
+            {"role": "system", "content": DETAIL_PARSE_SYSTEM},
+            {"role": "user",   "content": (
                 f"Task: {target.get('title','task ini')}\n"
                 f"Jawaban user: {answer}\n\n"
                 f"Ekstrak deskripsi + deadline."
-            ),
-        )
+            )},
+        ])
 
         old_desc = target.get("description") or ""
         if parsed.parsed_description and parsed.parsed_description.strip():
@@ -617,6 +600,7 @@ def _apply_answer(detail_llm: TaskDetailParsed, meta: list, idx: int, answer: st
 
         if parsed.parsed_raw_time and parsed.parsed_raw_time.strip():
             target["raw_time"] = parsed.parsed_raw_time.strip()
+        # deadline_confirmed_none tidak ubah raw_time — hanya berarti "sudah dikonfirmasi kosong"
 
     except Exception as e:
         _log("APPLY ANSWER ERROR", e)
@@ -638,23 +622,32 @@ def _gen_review(llm, tasks: list, user_msg: str) -> tuple[str, str]:
     offer_message: tawaran curhat yang spesifik dan kontekstual
     """
     try:
-        task_lines = [
-            f"- {t.get('title','Task')}: {t.get('description') or '(belum ada deskripsi)'}, "
-            f"deadline: {t.get('raw_time') or 'belum ada deadline'}"
-            for t in tasks
-        ]
-        result = _llm_invoke(
-            llm,
-            REVIEW_SYSTEM,
-            f"Pesan awal user: {user_msg}\n\nTask:\n" + "\n".join(task_lines),
-        )
+        task_lines = []
+        for t in tasks:
+            desc     = t.get("description") or "(belum ada deskripsi)"
+            deadline = t.get("raw_time") or "belum ada deadline"
+            task_lines.append(f"- {t.get('title','Task')}: {desc}, deadline: {deadline}")
+
+        result = llm.invoke([
+            {"role": "system", "content": REVIEW_SYSTEM},
+            {"role": "user",   "content": (
+                f"Pesan awal user: {user_msg}\n\n"
+                f"Task:\n" + "\n".join(task_lines)
+            )},
+        ])
         raw = str(result.content) if hasattr(result, "content") else str(result)
 
+        # Parse dua bagian yang dipisah |||
         if "|||" in raw:
             parts = raw.split("|||", 1)
-            return parts[0].strip(), parts[1].strip()
+            review_body  = parts[0].strip()
+            offer_msg    = parts[1].strip()
+        else:
+            # Fallback kalau LLM tidak ikut format
+            review_body = raw.strip()
+            offer_msg   = _fallback_offer(tasks)
 
-        return raw.strip(), _fallback_offer(tasks)
+        return review_body, offer_msg
 
     except Exception as e:
         _log("REVIEW GEN ERROR", e)
@@ -668,11 +661,13 @@ def _gen_feedback(llm, extra: str, tasks: list) -> str:
     """
     try:
         task_context = ", ".join(t.get("title","task") for t in tasks)
-        result = _llm_invoke(
-            llm,
-            FEEDBACK_SYSTEM,
-            f"Task user: {task_context}\nCerita tambahan user: {extra}",
-        )
+        result = llm.invoke([
+            {"role": "system", "content": FEEDBACK_SYSTEM},
+            {"role": "user",   "content": (
+                f"Task user: {task_context}\n"
+                f"Cerita tambahan user: {extra}"
+            )},
+        ])
         return str(result.content).strip() if hasattr(result, "content") else str(result).strip()
     except Exception as e:
         _log("FEEDBACK GEN ERROR", e)
@@ -714,59 +709,51 @@ def _fallback_review(tasks: list) -> str:
 # ── Meta Helpers ──────────────────────────────────────────────────────────────
 
 def _is_vague(raw_tasks: list) -> bool:
+    """
+    Cek apakah nama tugas fiktif/terlalu umum (sehingga butuh mode discovery).
+    """
     if not raw_tasks:
         return True
-    vague_kw = [
-        "belum jelas","tidak disebutkan","tidak diketahui","banyak tugas",
-        "tugas numpuk","belum ditentukan","tidak ada detail","tidak tahu",
-    ]
+        
     if len(raw_tasks) == 1:
         t       = raw_tasks[0]
         title   = (_get(t,"title") or "").lower()
-        desc    = (_get(t,"description") or "").lower()
-        generic = ["banyak tugas","tugas","kerjaan","task","banyak kerjaan","pekerjaan"]
-        if any(g == title for g in generic):
+        generic = ["banyak tugas","tugas","kerjaan","task","banyak kerjaan","pekerjaan", "kewajiban"]
+        
+        # JIKA JUDULNYA SANGAT UMUM
+        if title.strip() in generic:
             return True
-        if any(kw in desc for kw in vague_kw):
+        
+        # PERBAIKAN: Jangan lagi cek kata "belum jelas" secara membabi buta.
+        # Router sekarang pakai kata "belum jelas" untuk menjelaskan detail yang hilang dari tugas spesifik.
+        # Kita hanya mencari kalau "tugas spesifik tidak diketahui".
+        desc = (_get(t,"description") or "").lower()
+        if "tugas spesifik tidak diketahui" in desc:
             return True
-    # Fix #4: pakai any() bukan all() — kalau ADA SATU task yang vague,
-    # discovery tetap perlu dijalankan. all() sebelumnya menyebabkan task
-    # dengan deskripsi kosong lolos ke review tanpa pernah ditanya.
-    return any(
-        any(kw in (_get(t,"description") or "").lower() for kw in vague_kw)
-        for t in raw_tasks
-    )
+            
+        return False
+        
+    return False
 
 
 def _init_meta(raw_tasks: list) -> list[dict]:
     result = []
     for t in raw_tasks:
-        d        = _coerce(t)
-        desc     = d.get("description") or ""
-        vague    = ["belum jelas","tidak disebutkan","tidak diketahui"]
-        has_desc = len(desc) > 15 and not any(kw in desc.lower() for kw in vague)
-        result.append(_make_task_dict(
-            title               = d.get("title", ""),
-            description         = desc,
-            raw_time            = d.get("raw_time"),
-            raw_input           = d.get("raw_input", ""),
-            category            = d.get("category", "biasa"),
-            task_id             = d.get("task_id") or str(uuid4()),
-            deadline_confirmed  = d.get("deadline_confirmed", d.get("raw_time") is not None),
-            description_filled  = d.get("description_filled", has_desc),
-        ))
+        d       = _to_dict(t)
+        desc    = d.get("description") or ""
+        
+        # PERBAIKAN: Kita minta Counselor JANGAN skip tanya detail kalau Router
+        # bilang bahwa ada "detail yang belum jelas".
+        needs_clarification = any(kw in desc.lower() for kw in ["belum jelas", "tidak diketahui", "tidak disebutkan"])
+        has_desc = len(desc) > 15 and not needs_clarification
+        
+        d.setdefault("deadline_confirmed", d.get("raw_time") is not None)
+        d.setdefault("description_filled", has_desc)
+        result.append(d)
     return result
 
 
 def _next_incomplete(meta: list, after: int) -> int | None:
-    """
-    Cari index task pertama yang belum lengkap setelah posisi `after`.
-    Gunakan after=-1 untuk scan dari awal (semua task dicek).
-
-    Fix #5: fungsi ini selalu dipanggil dengan after=idx (bukan after=-1)
-    setelah apply_answer, sehingga hanya task SETELAH idx yang dicek.
-    Task sebelum idx dijamin sudah lengkap karena diproses secara sequential.
-    """
     for i, t in enumerate(meta):
         if i <= after:
             continue
@@ -776,35 +763,36 @@ def _next_incomplete(meta: list, after: int) -> int | None:
 
 
 def _to_tasks(meta: list) -> list[dict]:
-    """
-    Proyeksi meta ke task dict publik (tanpa field internal deadline_confirmed
-    dan description_filled).
-
-    Fix #6: JANGAN pakai hasil _to_tasks() sebagai pengganti meta di hitl_state.
-    tasks_with_meta di hitl_state harus selalu berisi meta lengkap (dengan field
-    internal), karena _init_meta() yang menerima tasks tanpa field ini akan
-    menganggap semua task belum lengkap dan memicu ulang fase detail.
-    """
-    return [
-        _make_task_dict(
-            title       = t.get("title", ""),
-            description = t.get("description", ""),
-            raw_time    = t.get("raw_time"),
-            raw_input   = t.get("raw_input", ""),
-            category    = t.get("category", "biasa"),
-            task_id     = t.get("task_id") or str(uuid4()),
-        )
-        for t in meta
-    ]
+    return [{
+        "task_id":    t.get("task_id") or str(uuid4()),
+        "title":      t.get("title",""),
+        "description": t.get("description",""),
+        "raw_time":   t.get("raw_time"),
+        "raw_input":  t.get("raw_input",""),
+        "category":   t.get("category","biasa"),
+    } for t in meta]
 
 
 # ── Message Builders ──────────────────────────────────────────────────────────
 
-def _discovery_msg(user_msg: str) -> str:
+def _discovery_msg(llm, user_msg: str) -> str:
+    """Menggunakan LLM untuk generate pertanyaan pembuka secara dinamis agar sesuai tone user."""
+    try:
+        result = llm.invoke([
+            {"role": "system", "content": DISCOVERY_CHAT_SYSTEM},
+            {"role": "user", "content": f"Ucapan awal user: {user_msg}"}
+        ])
+        content = str(result.content).strip() if hasattr(result, "content") else str(result).strip()
+        if content:
+            return content
+    except Exception as e:
+        _log("LLM DISCOVERY MSG ERROR", e)
+        
+    # FALLBACK jika LLM gagal (timeout, dll)
     has_stress = _stress(user_msg)
     if has_stress:
         opening = (
-            "Oke, tenang dulu — wajar banget kok ngerasa kayak gitu kalau semuanya dateng barengan. "
+            "Oke, tenang dulu — wajar banget ngerasa pusing kalau lagi banyak yang dipikirin. "
             "Kita urai pelan-pelan bareng-bareng ya, biar kepala lo ga makin mumet."
         )
     else:
@@ -813,21 +801,36 @@ def _discovery_msg(user_msg: str) -> str:
             "Kita lihat dulu apa aja yang lagi ada."
         )
     ask = (
-        "Coba ceritain dulu — ada kegiatan atau kewajiban apa aja yang lagi numpuk? "
-        "(contoh: 'tugas basdat, meeting sama klien, olahraga rutin, laprak kimia')"
+        "Coba ceritain dulu — ada kegiatan atau kewajiban apa aja yang lagi numpuk atau bikin kepikiran? "
+        "(contoh: 'tugas basdat, meeting sama klien, laprak kimia')"
     )
     return f"{opening} {ask}"
 
 
-def _detail_q(task_meta: dict, is_first: bool, user_msg: str) -> str:
-    title     = task_meta.get("title", "yang ini")
-    is_stress = _stress(user_msg)
+def _detail_q(llm, task_meta: dict, is_first: bool, user_msg: str) -> str:
+    """Menggunakan LLM untuk menanyakan detail spesifik dari sebuah task sesuai tone user."""
+    title = task_meta.get("title", "yang ini")
+    try:
+        result = llm.invoke([
+            {"role": "system", "content": DETAIL_CHAT_SYSTEM},
+            {"role": "user", "content": f"Ucapan awal user: {user_msg}\nStatus: is_first={is_first}, Task yang dibahas sekarang: {title}"}
+        ])
+        content = str(result.content).strip() if hasattr(result, "content") else str(result).strip()
+        if content:
+            return content
+    except Exception as e:
+        _log("LLM DETAIL Q ERROR", e)
 
+    # FALLBACK jika LLM gagal
+    is_stress = _stress(user_msg)
     if is_first:
-        warmup = (
-            "Oke, kita bedah satu-satu pelan-pelan ya — "
-            "biar semuanya keliatan lebih manageable dan ga bikin kepala penuh. "
-        ) if is_stress else "Oke, kita mulai dari yang pertama ya. "
+        if is_stress:
+            warmup = (
+                "Oke, kita bedah satu-satu pelan-pelan ya — "
+                "biar semuanya keliatan lebih manageable dan ga bikin kepala penuh. "
+            )
+        else:
+            warmup = "Oke, kita mulai dari yang pertama ya. "
         prefix = f"{warmup}Sekarang ceritain dulu soal **{title}**:"
     else:
         prefix = f"Oke noted! Sekarang **{title}**:"
@@ -877,7 +880,10 @@ def _force_done(raw_tasks: list) -> dict:
     }
 
 
+
 # ── Calendar Context (opsional — hanya untuk konteks prompt) ─────────────────
+# Fungsi-fungsi ini dipanggil jika calendar_client diinjek via make_counselor.
+# Tidak mempengaruhi state, output, atau agent lain — murni konteks tambahan.
 
 def _fetch_schedule_context(calendar_client, state: AppState) -> str:
     """Ambil jadwal existing dari calendar untuk konteks LLM. Return string kosong jika gagal."""
@@ -885,7 +891,7 @@ def _fetch_schedule_context(calendar_client, state: AppState) -> str:
         return ""
 
     metadata = get_metadata(state) or {}
-    token    = _extract_auth_token(metadata)
+    token = _extract_auth_token(metadata)
 
     try:
         schedules = calendar_client.list_schedules(token=token)
@@ -893,7 +899,10 @@ def _fetch_schedule_context(calendar_client, state: AppState) -> str:
         _log("CALENDAR CONTEXT ERROR", err)
         return ""
 
-    return _format_schedule_context(schedules) if schedules else "(tidak ada jadwal)"
+    if not schedules:
+        return "(tidak ada jadwal)"
+
+    return _format_schedule_context(schedules)
 
 
 def _format_schedule_context(schedules: list[dict]) -> str:
@@ -921,3 +930,21 @@ def _extract_auth_token(metadata: dict) -> str | None:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return None
+
+
+# ── Generic Utils ─────────────────────────────────────────────────────────────
+
+def _get(task, field: str):
+    if hasattr(task, field):
+        return getattr(task, field)
+    if isinstance(task, dict):
+        return task.get(field)
+    return None
+
+
+def _to_dict(task) -> dict:
+    if hasattr(task, "model_dump"):
+        return task.model_dump()
+    if isinstance(task, dict):
+        return dict(task)
+    return {}
