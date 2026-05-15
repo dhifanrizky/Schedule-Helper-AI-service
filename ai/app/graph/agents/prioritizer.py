@@ -101,8 +101,9 @@ Tugas utama:
    - category
    - preferred_window
    - urgency, importance, effort, energy_fit
-3. Jangan membuat task fiktif yang tidak didukung input.
+3. Jangan membuat task fiktif yang tidak didukung input KECUALI untuk aturan Wellness di bawah.
 4. Jika user bilang deadline "hari ini", "besok", atau "minggu ini", gunakan itu sebagai sinyal urgency tinggi.
+5. WELLNESS RULE (CRITICAL): Jika "Kondisi Mental/Intent User" adalah "stress" atau "overload", KAMU WAJIB menambahkan 1 task EKSTRA secara otomatis (di luar input user). Beri nama "Istirahat & Relaksasi". Set durasi 30 menit, kategori "santai", preferred_window "bebas". Berikan skor urgency=5, importance=5, effort=1, energy_fit=5 agar task ini muncul di urutan paling atas/awal jadwal. Isi subtask dengan: "Tarik napas panjang", "Minum air putih secukupnya", "Stretching atau rebahan sebentar untuk kalibrasi pikiran".
 
 Panduan scoring:
 - urgency: 5 = deadline hari ini/besok/sangat mepet, 1 = santai/tidak ada urgensi
@@ -651,173 +652,94 @@ def _extract_auth_token(metadata: dict) -> str | None:
 def minutes_to_iso(total_minutes: int, base_date: str) -> str:
     hour = total_minutes // 60
     minute = total_minutes % 60
-
-    # PERBAIKAN: Menangani jam lembur hingga lintas hari (melewati 24:00)
-    if hour >= 24:
-        extra_days = hour // 24
-        hour = hour % 24
-        base_dt = datetime.fromisoformat(base_date) + timedelta(days=extra_days)
-        base_date = base_dt.strftime("%Y-%m-%d")
-
     return f"{base_date}T{hour:02d}:{minute:02d}:00"
-
-
-def _get_busy_slots(schedules: list[dict], target_date: str) -> list[tuple[int, int]]:
-    busy = []
-    for s in schedules:
-        start_str = s.get("startTime") or s.get("start_time")
-        end_str = s.get("endTime") or s.get("deadline")
-        if not start_str or not end_str:
-            continue
-
-        try:
-            # PERBAIKAN: Jadikan aware datetime agar aman dibandingan
-            st = datetime.fromisoformat(str(start_str).replace("Z", "+00:00"))
-            if st.tzinfo is None:
-                st = st.astimezone()
-
-            ed = datetime.fromisoformat(str(end_str).replace("Z", "+00:00"))
-            if ed.tzinfo is None:
-                ed = ed.astimezone()
-
-            if st.strftime("%Y-%m-%d") == target_date:
-                start_min = st.hour * 60 + st.minute
-                end_min = ed.hour * 60 + ed.minute
-                busy.append((start_min, end_min))
-        except ValueError:
-            pass
-    return sorted(busy, key=lambda x: x[0])
-
-
-def _find_free_slot(
-    start_search: int, duration: int, busy_slots: list[tuple[int, int]]
-) -> int:
-    current_attempt = start_search
-    for b_start, b_end in busy_slots:
-        if current_attempt + duration <= b_start:
-            return current_attempt
-        if current_attempt < b_end:
-            current_attempt = b_end + 5
-    return current_attempt
 
 
 def build_proposed_schedule(
     task_breakdown: list[TaskBreakdown], existing_schedules: list[dict] = None
 ) -> list[ScheduleItem]:
     proposed_schedule: list[ScheduleItem] = []
-    if existing_schedules is None:
-        existing_schedules = []
 
-    # PERBAIKAN: Jadikan 'now' offset-aware lokal agar tidak crash saat diadu dengan deadline
-    now = datetime.now().astimezone()
-    current_date_dt = now
+    current_date = datetime.now().strftime("%Y-%m-%d")
+    current_time = 9 * 60
 
     for item in task_breakdown:
-        duration = int(item.get("estimated_minutes", 60))
-        preferred_window = item.get("preferred_window", "bebas")
+        is_locked = item.get("is_locked_time", False)
+        locked_time_str = item.get("locked_start_time")
 
-        deadline = item.get("deadline")
-        deadline_dt = None
-        if deadline:
+        base_date = current_date
+        start_time_minutes = current_time
+
+        if is_locked and locked_time_str:
             try:
-                parsed_dt = datetime.fromisoformat(deadline.replace("Z", "+00:00"))
-                # Pastikan deadline_dt juga offset-aware lokal
-                if parsed_dt.tzinfo is None:
-                    parsed_dt = parsed_dt.astimezone()
-                else:
-                    parsed_dt = parsed_dt.astimezone()
-                deadline_dt = parsed_dt
+                # 1. Jika user mengunci jam spesifik dari UI
+                locked_dt = datetime.fromisoformat(
+                    str(locked_time_str).replace("Z", "+00:00")
+                )
+                base_date = locked_dt.strftime("%Y-%m-%d")
+                start_time_minutes = locked_dt.hour * 60 + locked_dt.minute
+
+                # Sesuaikan current_time agar tugas berikutnya menyesuaikan jadwal ini
+                current_date = base_date
+                current_time = start_time_minutes
             except ValueError:
-                pass
+                is_locked = False  # Fallback kalau format salah
 
-        ideal_dt = now + timedelta(minutes=15)
+        if not is_locked:
+            # 2. Logic otomatis dari sistem jika jam tidak dikunci
+            preferred_window = item.get("preferred_window", "bebas")
+            preferred_start = WINDOW_START.get(preferred_window, 9 * 60)
 
-        if deadline_dt:
-            latest_start_dt = deadline_dt - timedelta(minutes=duration)
+            deadline = item.get("deadline")
+            deadline_dt = None
 
-            if latest_start_dt < now:
-                ideal_dt = now + timedelta(minutes=15)
-            else:
-                pref_mins = WINDOW_START.get(preferred_window, 9 * 60)
-                pref_dt = deadline_dt.replace(
-                    hour=pref_mins // 60, minute=pref_mins % 60, second=0, microsecond=0
+            if deadline:
+                try:
+                    deadline_dt = datetime.fromisoformat(deadline)
+                except ValueError:
+                    deadline_dt = None
+
+            if deadline_dt:
+                base_date = deadline_dt.strftime("%Y-%m-%d")
+                deadline_minutes = deadline_dt.hour * 60 + deadline_dt.minute
+
+                # Jika tanggal berubah, reset jam kerja ke awal window.
+                if base_date != current_date:
+                    current_date = base_date
+                    current_time = preferred_start
+
+                # Deadline jam 23:59 berarti hanya batas akhir hari,
+                # bukan berarti task harus dimulai jam 23:59.
+                is_end_of_day_deadline = (
+                    deadline_dt.hour == 23 and deadline_dt.minute >= 55
                 )
 
-                # LOGIKA BARU: Tarik mundur ke H-1 (malam) kalau mepet banget (sebelum jam 8 pagi)
-                if latest_start_dt.hour < 8:
-                    prev_day = deadline_dt - timedelta(days=1)
-                    ideal_dt = prev_day.replace(
-                        hour=19, minute=0, second=0, microsecond=0
-                    )
-
-                # LOGIKA BARU: Kalau preferred window bikin nabrak deadline
-                elif pref_dt + timedelta(minutes=duration) > deadline_dt:
-                    if preferred_window in ["malam", "sore"]:
-                        # Geser ke sore/malam hari sebelumnya
-                        prev_day = deadline_dt - timedelta(days=1)
-                        ideal_dt = prev_day.replace(
-                            hour=pref_mins // 60,
-                            minute=pref_mins % 60,
-                            second=0,
-                            microsecond=0,
-                        )
-                    else:
-                        ideal_dt = latest_start_dt
+                if is_end_of_day_deadline:
+                    start_time_minutes = max(current_time, preferred_start)
                 else:
-                    ideal_dt = pref_dt
-        else:
-            pref_mins = WINDOW_START.get(preferred_window, 9 * 60)
-            pref_dt = current_date_dt.replace(
-                hour=pref_mins // 60, minute=pref_mins % 60, second=0, microsecond=0
-            )
-
-            if pref_dt < now:
-                ideal_dt = now + timedelta(minutes=15)
+                    # Untuk event fixed-time seperti meeting jam 09:00,
+                    # gunakan jam deadline sebagai start time.
+                    start_time_minutes = max(
+                        current_time, deadline_minutes, preferred_start
+                    )
             else:
-                ideal_dt = pref_dt
+                base_date = current_date
+                start_time_minutes = max(current_time, preferred_start)
 
-        # Pastikan tidak menjadwalkan di masa lalu
-        if ideal_dt < now:
-            ideal_dt = now + timedelta(minutes=15)
-
-        base_date_str = ideal_dt.strftime("%Y-%m-%d")
-
-        # Tarik slot sibuk
-        busy_slots = _get_busy_slots(existing_schedules, base_date_str)
-        for p in proposed_schedule:
-            try:
-                # PERBAIKAN: Samakan perlakuannya dengan data existing_schedules
-                p_dt = datetime.fromisoformat(p["start_time"].replace("Z", "+00:00"))
-                if p_dt.tzinfo is None:
-                    p_dt = p_dt.astimezone()
-
-                if p_dt.strftime("%Y-%m-%d") == base_date_str:
-                    p_start = p_dt.hour * 60 + p_dt.minute
-                    p_end = p_start + p["duration_minutes"] + 5
-                    busy_slots.append((p_start, p_end))
-            except ValueError:
-                pass
-        busy_slots.sort(key=lambda x: x[0])
-
-        start_search_mins = ideal_dt.hour * 60 + ideal_dt.minute
-        start_time_minutes = _find_free_slot(start_search_mins, duration, busy_slots)
-
-        start_iso = minutes_to_iso(start_time_minutes, base_date_str)
+        main_task = item["title"]
 
         proposed_schedule.append(
             {
                 "task_id": item["task_id"],
-                "task": item["title"],
+                "task": main_task,
                 "priority": int(item["priority"]),
-                "start_time": start_iso,
-                "duration_minutes": duration,
+                "start_time": minutes_to_iso(start_time_minutes, base_date),
+                "duration_minutes": int(item["estimated_minutes"]),
                 "category": item["category"],
                 "subtasks": item["subtasks"],
             }
         )
 
-        # Update urutan waktu untuk task beruntun supaya gak numpuk
-        scheduled_start_dt = datetime.fromisoformat(start_iso)
-        current_date_dt = scheduled_start_dt + timedelta(minutes=duration + 10)
+        current_time = start_time_minutes + int(item["estimated_minutes"]) + 10
 
     return proposed_schedule

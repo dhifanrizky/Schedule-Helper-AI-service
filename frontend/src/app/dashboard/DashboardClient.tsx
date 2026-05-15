@@ -74,34 +74,44 @@ export default function DashboardClient() {
     setScheduleItems,
   } = useSchedule();
 
-  useEffect(() => {
+useEffect(() => {
     if (hitlPayload?.type !== "task_review") return;
-    if (!hitlPayload.tasks?.length) return;
-    console.log(
-      "hitlPayload proposed_schedule: ",
-      hitlPayload.tasks,
-    );
-    const mappedScheduleItems = hitlPayload.tasks.map(
-      (item: any) => ({
-        time:
-          item.time ||
-          (item.start_time
-            ? formatTimeRange(item.start_time, item.duration_minutes)
-            : "Belum dijadwalkan"),
-        title: item.task,
-        task_id: item.task_id,
-        priority: item.priority,
-        category: item.category,
-        subtasks: item.subtasks || [],
-        estimated_minutes: item.duration_minutes,
-        deadline: item.deadline,
-        preferred_window: item.preferred_window,
-      }),
+    if (!hitlPayload.proposed_schedule?.length) return; // Patokannya dari proposed_schedule
+
+    console.log("hitlPayload tasks: ", hitlPayload.tasks);
+    console.log("hitlPayload proposed_schedule: ", hitlPayload.proposed_schedule);
+
+    // Kita map dari proposed_schedule, lalu kita cari data blueprint pasangannya di array tasks
+    const mappedScheduleItems = hitlPayload.proposed_schedule.map(
+      (scheduleItem: any) => {
+        // Cari blueprint task yang sesuai berdasarkan task_id
+        const blueprintTask: any =
+          hitlPayload.tasks?.find((t: any) => t.task_id === scheduleItem.task_id) || {};
+
+        return {
+          task_id: scheduleItem.task_id,
+          title: blueprintTask.title || scheduleItem.task, // Ambil title dari blueprint
+          priority: scheduleItem.priority,
+          // Bikin string jam "19:00 - 20:00"
+          time: scheduleItem.start_time 
+            ? formatTimeRange(scheduleItem.start_time, scheduleItem.duration_minutes)
+            : "Belum dijadwalkan",
+          start_time: scheduleItem.start_time, // Simpan format aslinya juga
+          category: scheduleItem.category,
+          subtasks: scheduleItem.subtasks || [],
+          // Gabungkan data blueprint:
+          estimated_minutes: scheduleItem.duration_minutes,
+          deadline: blueprintTask.deadline || null,
+          preferred_window: blueprintTask.preferred_window || "bebas",
+          // Tambahan field untuk fitur lock jam spesifik yang baru kita buat
+          is_locked_time: blueprintTask.is_locked_time || false,
+          locked_start_time: blueprintTask.locked_start_time || null,
+        };
+      }
     );
 
     setScheduleItems(mappedScheduleItems);
   }, [hitlPayload, setScheduleItems]);
-
   useEffect(() => {
     console.log("Schedulet Items : ", scheduleItems);
   }, [scheduleItems]);

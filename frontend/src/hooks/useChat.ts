@@ -294,14 +294,38 @@ export function useChat(userEmail?: string) {
         accumulated += combined;
       }
 
+      // Deduplicate consecutive identical sentences/clauses and paragraphs
+      const deduplicate = (text: string): string => {
+        // Split into paragraphs (double newline or multiple sentence-ending punctuation)
+        const paragraphs = text
+          .split(/\n{2,}|(?<=[.!?])\s{2,}(?=[A-Z])/g)
+          .map((p) => p.trim())
+          .filter((p) => p.length > 0);
+
+        // Remove consecutive duplicates at paragraph level
+        const dedupedParagraphs: string[] = [];
+        for (const paragraph of paragraphs) {
+          if (
+            dedupedParagraphs.length === 0 ||
+            dedupedParagraphs[dedupedParagraphs.length - 1] !== paragraph
+          ) {
+            dedupedParagraphs.push(paragraph);
+          }
+        }
+
+        return dedupedParagraphs.join("\n\n");
+      };
+
+      const deduplicated = deduplicate(accumulated);
+
       setMessages((prev) => {
         const updated = [...prev];
         const lastIdx = updated.length - 1;
 
         if (updated[lastIdx]?.role === "system") {
-          updated[lastIdx] = { role: "system", content: accumulated };
-        } else if (accumulated.trim() !== "") {
-          updated.push({ role: "system", content: accumulated });
+          updated[lastIdx] = { role: "system", content: deduplicated };
+        } else if (deduplicated.trim() !== "") {
+          updated.push({ role: "system", content: deduplicated });
         }
 
         return updated;

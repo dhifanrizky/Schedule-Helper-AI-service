@@ -74,7 +74,8 @@ export function ChatState({
   const isAwaitingApproval =
     messages.length > 0 &&
     messages[messages.length - 1].role === "system" &&
-    (hitlPayload?.type === "counselor_chat" || hitlPayload?.type === "counselor_review");
+    (hitlPayload?.type === "counselor_chat" ||
+      hitlPayload?.type === "counselor_review");
 
   const handleInputSubmit = (e: FormEvent) => {
     if (isAwaitingApproval) {
@@ -111,27 +112,27 @@ export function ChatState({
         </header>
 
         <div className="flex-1 overflow-y-auto px-6 pt-10 pb-6">
-          <div className="max-w-4xl mx-auto flex flex-col gap-8">
-            {messages.map((msg, index) => {
-              const isLastIndex = index === messages.length - 1;
+          <div className="flex flex-col gap-8">
+            <div className="max-w-4xl mx-auto w-full flex flex-col gap-4">
+              {messages.map((msg, index) => {
+                const isLastIndex = index === messages.length - 1;
 
-              return (
-                <div key={index} className="flex flex-col gap-4">
-                  {msg.role !== "system" && <ChatMessage message={msg} />}
+                return (
+                  <div key={index} className="flex flex-col gap-4">
+                    {msg.role !== "system" && <ChatMessage message={msg} />}
 
-                  {msg.role === "system" &&
-                    (!isTyping || !isLastIndex) &&
-                    // Perbaikan kurung untuk kondisi
-                    ((hitlPayload?.type === "counselor_chat" ||
-                      (hitlPayload?.type === "counselor_review" && isLastIndex)) ? (
-                      <ChatMessage message={msg} payload={hitlPayload} />
-                    ) : (
-                      <ChatMessage message={msg} />
-                    ))}
-                </div>
-              );
-            })}
-            
+                    {msg.role === "system" &&
+                      (!isTyping && isLastIndex && 
+                       (hitlPayload?.type === "counselor_chat" ||
+                        hitlPayload?.type === "counselor_review")
+                        ? <ChatMessage message={msg} payload={hitlPayload} />
+                        : <ChatMessage message={msg} />
+                      )}
+                  </div>
+                );
+              })}
+            </div>
+
             {hitlPayload?.type === "task_review" && (
               <ResultState
                 scheduleItems={scheduleItems}
@@ -140,7 +141,7 @@ export function ChatState({
                 // onEditSchedule={handleEditSchedule}
               />
             )}
-            
+
             {isTyping && <TypingIndicator />}
             <div ref={messagesEndRef} />
           </div>

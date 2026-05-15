@@ -34,12 +34,15 @@ export type ScheduleItem = {
   task_id: string;
   title: string;
   priority: number;
-  time: string;
+  time: string;           // Hasil format jam (misal "19:00 - 20:00")
+  start_time?: string;    // String ISO aslinya
   category: string;
   subtasks: string[];
   estimated_minutes: number; 
-  deadline: string; 
+  deadline: string | null; 
   preferred_window: string; 
+  is_locked_time?: boolean;
+  locked_start_time?: string;
 };
 
 // Payload yang dikirim saat user menekan "Generate My Schedule"
